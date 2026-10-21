@@ -46,41 +46,6 @@ APP_CSS = """
   --sidebar: #102a24;
   --sidebar-text: #e8f2ed;
   --sidebar-muted: #9bb6ac;
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --duration-press: 120ms;
-  --duration-ui: 180ms;
-}
-
-@keyframes settle-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes expand-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 html, body, .stApp, button, input, textarea, select {
@@ -176,7 +141,6 @@ hr {
   border-radius: 1.15rem;
   background: var(--sidebar);
   box-shadow: 0 24px 50px -42px rgba(16, 42, 36, 0.7);
-  animation: settle-in 280ms var(--ease-out) both;
 }
 
 .masthead-brand {
