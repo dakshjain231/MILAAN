@@ -13,6 +13,7 @@ simulation; live WhatsApp delivery is disabled in this build.
 Run: .venv/bin/streamlit run app.py
 """
 
+import html
 import sys
 from pathlib import Path
 
@@ -30,6 +31,642 @@ st.set_page_config(
     page_icon=":material/account_balance:",
     layout="wide",
 )
+
+APP_CSS = """
+<style>
+:root {
+  --ink: #142621;
+  --forest: #0f6455;
+  --forest-deep: #0b5044;
+  --paper: #f3f6f2;
+  --surface: #fcfdfb;
+  --line: #d7e2dc;
+  --line-strong: #c3d3cc;
+  --muted: #5d7069;
+  --sidebar: #102a24;
+  --sidebar-text: #e8f2ed;
+  --sidebar-muted: #9bb6ac;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --duration-press: 120ms;
+  --duration-ui: 180ms;
+}
+
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes expand-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html, body, .stApp, button, input, textarea, select {
+  font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.stApp {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+[data-testid="stHeader"] {
+  background: transparent;
+}
+
+.block-container {
+  max-width: 1240px;
+  padding-top: 1.4rem;
+  padding-bottom: 4.5rem;
+}
+
+::selection {
+  background: #cde8de;
+  color: #102a24;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #b4c9c1 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #b4c9c1;
+  border: 3px solid var(--paper);
+  border-radius: 999px;
+}
+
+a {
+  color: var(--forest);
+  text-underline-offset: 0.18em;
+}
+
+h1, h2, h3 {
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+h2 {
+  border-top: 1px solid var(--line);
+  margin-top: 2.7rem !important;
+  padding-top: 1.45rem;
+  font-size: 1.48rem !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.028em;
+}
+
+h2 [data-testid="stIconMaterial"] {
+  color: var(--forest);
+}
+
+h3 {
+  letter-spacing: -0.015em;
+  font-weight: 650 !important;
+}
+
+p, li {
+  line-height: 1.62;
+}
+
+[data-testid="stCaptionContainer"] p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.58;
+}
+
+hr {
+  border-color: var(--line);
+  opacity: 0.7;
+}
+
+.masthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1.65rem 1.8rem;
+  border: 1px solid #1d3b33;
+  border-radius: 1.15rem;
+  background: var(--sidebar);
+  box-shadow: 0 24px 50px -42px rgba(16, 42, 36, 0.7);
+  animation: settle-in 280ms var(--ease-out) both;
+}
+
+.masthead-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 auto;
+  border: 1px solid rgba(168, 224, 205, 0.2);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.brand-name {
+  color: #f3faf6;
+  font-size: 2.15rem;
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.055em;
+}
+
+.brand-name span {
+  color: #6fd2b2;
+}
+
+.brand-sub {
+  margin-top: 0.55rem;
+  color: #a7c3b9;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.masthead-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+  padding-top: 0.2rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.42rem 0.68rem;
+  border: 1px solid rgba(205, 236, 225, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #dcebe4;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: #73d9b7;
+  box-shadow: 0 0 0 3px rgba(115, 217, 183, 0.12);
+}
+
+.status-pill.quiet {
+  color: #a8beb6;
+}
+
+.status-pill.quiet .status-dot {
+  background: #d3a45b;
+  box-shadow: 0 0 0 3px rgba(211, 164, 91, 0.12);
+}
+
+.status-pill.alert {
+  color: #ffd7c9;
+}
+
+.status-pill.alert .status-dot {
+  background: #e79572;
+  box-shadow: 0 0 0 3px rgba(231, 149, 114, 0.13);
+}
+
+.masthead-note {
+  max-width: 70ch;
+  margin: 1.15rem 0 0.2rem;
+  color: #536861;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+section[data-testid="stSidebar"] {
+  border-right: 1px solid #203d35;
+  background: var(--sidebar);
+}
+
+section[data-testid="stSidebar"] > div {
+  background: transparent;
+}
+
+[data-testid="stSidebarUserContent"] {
+  padding-top: 1.5rem;
+}
+
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] label {
+  color: var(--sidebar-text);
+}
+
+.rail-label {
+  margin: 1.35rem 0 0.55rem;
+  color: #80a59a;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.rail-intro {
+  margin: 0 0 0.55rem;
+  color: var(--sidebar-muted) !important;
+  font-size: 0.77rem;
+  line-height: 1.55;
+}
+
+.rail-step {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.62rem 0;
+  border-bottom: 1px solid rgba(225, 244, 237, 0.075);
+  text-decoration: none !important;
+}
+
+.rail-step:hover .rail-step-title {
+  color: #91e3c7;
+}
+
+.rail-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+  border: 1px solid rgba(145, 207, 187, 0.24);
+  border-radius: 0.38rem;
+  color: #91c8b6;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.rail-step-title {
+  display: block;
+  color: #e8f2ed;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.rail-step-note {
+  display: block;
+  margin-top: 0.12rem;
+  color: #8eaaa0;
+  font-size: 0.69rem;
+  line-height: 1.4;
+}
+
+.rail-system {
+  display: flex;
+  align-items: center;
+  gap: 0.48rem;
+  margin: 0.45rem 0;
+  color: #c8ddd5 !important;
+  font-size: 0.76rem;
+}
+
+.rail-path {
+  margin: 0.75rem 0 0;
+  color: #77958b !important;
+  font-size: 0.67rem;
+  line-height: 1.55;
+  word-break: break-all;
+}
+
+section[data-testid="stSidebar"] .stButton > button {
+  border-color: rgba(225, 244, 237, 0.2);
+  background: transparent;
+  color: #e8f2ed;
+}
+
+section[data-testid="stSidebar"] .stButton > button:hover {
+  border-color: rgba(145, 227, 199, 0.55);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+div[data-testid="stMetric"] {
+  min-height: 5.15rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+  box-shadow: 0 12px 24px -24px rgba(20, 38, 33, 0.38);
+}
+
+div[data-testid="stMetricLabel"] p {
+  color: var(--muted);
+  font-size: 0.73rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+div[data-testid="stMetricValue"] {
+  color: var(--ink);
+  font-size: 1.55rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+
+div[data-testid="stDataFrame"] {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: #ffffff;
+}
+
+[data-testid="stExpander"] details {
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+}
+
+[data-testid="stExpander"] summary {
+  font-weight: 600;
+}
+
+[data-testid="stExpander"] summary:hover {
+  color: var(--forest);
+}
+
+[data-testid="stAlert"] {
+  border-radius: 0.85rem;
+  border: 1px solid var(--line);
+}
+
+.stButton > button {
+  min-height: 2.55rem;
+  border-radius: 0.6rem;
+  border-color: var(--line-strong);
+  color: var(--ink);
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  transition: background-color 160ms ease, border-color 160ms ease,
+    color 160ms ease, box-shadow 160ms ease;
+}
+
+.stButton > button:hover {
+  border-color: #8fb3a6;
+  background: #f2f8f5;
+  color: var(--forest-deep);
+}
+
+.stButton > button[kind="primary"] {
+  border-color: var(--forest);
+  background: var(--forest);
+  color: #ffffff;
+  box-shadow: 0 10px 20px -16px rgba(15, 100, 85, 0.7);
+}
+
+.stButton > button[kind="primary"]:hover {
+  border-color: var(--forest-deep);
+  background: var(--forest-deep);
+  color: #ffffff;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid #2e9d83;
+  outline-offset: 2px;
+}
+
+[data-testid="stFileUploaderDropzone"] {
+  padding: 1.15rem;
+  border: 1px dashed #a8c3b9;
+  border-radius: 0.9rem;
+  background: #fbfdfb;
+}
+
+[data-testid="stFileUploaderDropzone"]:hover {
+  border-color: #75a797;
+  background: #f6fbf8;
+}
+
+[data-baseweb="input"],
+[data-baseweb="select"] > div,
+[data-baseweb="textarea"] {
+  border-radius: 0.6rem !important;
+}
+
+button[data-baseweb="tab"] {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+  color: var(--forest);
+}
+
+[data-baseweb="tab-highlight"] {
+  background: var(--forest);
+}
+
+[data-baseweb="tab-border"] {
+  background: var(--line);
+}
+
+code {
+  color: #275f52;
+  background: #eaf3ee;
+  border-radius: 0.3rem;
+}
+
+@media (max-width: 780px) {
+  .block-container {
+    padding-top: 0.8rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .masthead {
+    flex-direction: column;
+    gap: 1.15rem;
+    padding: 1.3rem;
+    border-radius: 0.95rem;
+  }
+
+  .masthead-meta {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .brand-name {
+    font-size: 1.85rem;
+  }
+
+  h2 {
+    margin-top: 2.15rem !important;
+    font-size: 1.32rem !important;
+  }
+}
+</style>
+"""
+
+
+def _inject_styles() -> None:
+    st.markdown(APP_CSS, unsafe_allow_html=True)
+
+
+def _render_masthead(ready: bool, actor: str) -> None:
+    status_class = "status-pill" if ready else "status-pill alert"
+    status_text = "Database ready" if ready else "Database needs attention"
+    actor_label = (
+        "Local demo" if actor == "local-demo"
+        else html.escape(actor)
+    )
+    st.markdown(
+        f"""
+        <div class="masthead">
+          <div class="masthead-brand">
+            <div class="brand-mark" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+                <path d="M5 8.25h8.25M5 17.75h8.25"
+                      stroke="#7dd8ba" stroke-width="2.1"
+                      stroke-linecap="round"/>
+                <path d="M15.25 6.5 21 13l-5.75 6.5"
+                      stroke="#f0faf5" stroke-width="2.1"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div>
+              <div class="brand-name">MILAAN<span>.</span></div>
+              <div class="brand-sub">GST reconciliation workspace</div>
+            </div>
+          </div>
+          <div class="masthead-meta">
+            <span class="{status_class}">
+              <span class="status-dot"></span>{status_text}
+            </span>
+            <span class="status-pill quiet">
+              <span class="status-dot"></span>Live sending off
+            </span>
+            <span class="status-pill quiet">{actor_label}</span>
+          </div>
+        </div>
+        <p class="masthead-note">
+          Review purchase records, reconcile normalized GSTR-2B data, and
+          keep every follow-up decision traceable. Findings support human
+          review and do not determine ITC eligibility.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_sidebar(ready: bool, actor: str) -> None:
+    database_path = html.escape(str(db.get_database_path().resolve()))
+    status_text = "Database ready" if ready else "Database needs attention"
+    with st.sidebar:
+        st.markdown(
+            """
+            <div class="rail-label">Reconciliation flow</div>
+            <p class="rail-intro">Work from validation to evidence. Every
+            stage is persisted, and approval never sends a message.</p>
+            <a class="rail-step" href="#validation">
+              <span class="rail-num">1</span>
+              <span><span class="rail-step-title">Invoice validation</span>
+              <span class="rail-step-note">Field, tax and duplicate checks</span></span>
+            </a>
+            <a class="rail-step" href="#import-gstr2b">
+              <span class="rail-num">2</span>
+              <span><span class="rail-step-title">GSTR-2B intake</span>
+              <span class="rail-step-note">Normalized CSV or XLSX with audit trail</span></span>
+            </a>
+            <a class="rail-step" href="#reconciliation">
+              <span class="rail-num">3</span>
+              <span><span class="rail-step-title">Reconciliation</span>
+              <span class="rail-step-note">Exact evidence and review routing</span></span>
+            </a>
+            <a class="rail-step" href="#follow-ups">
+              <span class="rail-num">4</span>
+              <span><span class="rail-step-title">Follow-up drafts</span>
+              <span class="rail-step-note">Human approval before delivery review</span></span>
+            </a>
+            <a class="rail-step" href="#later-statement">
+              <span class="rail-num">5</span>
+              <span><span class="rail-step-title">Later-statement check</span>
+              <span class="rail-step-note">Append evidence without changing history</span></span>
+            </a>
+            <a class="rail-step" href="#delivery">
+              <span class="rail-num">6</span>
+              <span><span class="rail-step-title">Delivery audit</span>
+              <span class="rail-step-note">Simulation and operator evidence</span></span>
+            </a>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+            <div class="rail-label">Environment</div>
+            <div class="rail-system">
+              <span class="status-dot"></span>{html.escape(status_text)}
+            </div>
+            <div class="rail-system">
+              <span class="status-dot"></span>Live messages disabled
+            </div>
+            <p class="rail-path">{database_path}</p>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.expander("Operational audit"):
+            try:
+                audit_events = db.get_system_audit_events()
+            except Exception as exc:
+                st.error(f"Could not load audit history: {exc}")
+            else:
+                if audit_events:
+                    st.dataframe(
+                        audit_events,
+                        alt="Recent operational audit events",
+                        hide_index=True,
+                        height=220,
+                    )
+                else:
+                    st.caption("No operational actions recorded yet.")
+        if actor != "local-demo":
+            st.caption(f"Signed in as {actor}")
+            if st.button("Sign out", key="sign_out"):
+                st.logout()
 
 
 def _require_authorized_user() -> str:
@@ -84,12 +721,8 @@ def _audit(actor: str, event: str, subject: str, subject_id: object, **details: 
 
 
 def main() -> None:
+    _inject_styles()
     actor = _require_authorized_user()
-    st.title("MILAAN", icon=":material/account_balance:")
-    st.caption(
-        "Invoice review and GSTR-2B reconciliation for small businesses. "
-        "Findings support human review; they do not determine ITC eligibility."
-    )
 
     try:
         db.init_db()
@@ -98,47 +731,14 @@ def main() -> None:
         st.error(f"Database error: {exc}")
         st.stop()
 
-    st.subheader("Workspace")
-    cols = st.columns(2)
-    cols[0].metric("Database", "Ready" if ready else "Not ready", border=True)
-    cols[1].metric("Application", "Running", border=True)
+    _render_masthead(ready, actor)
+    _render_sidebar(ready, actor)
 
-    with st.sidebar:
-        st.markdown("### Workflow")
-        st.markdown(
-            "1. Review invoice validation\n"
-            "2. Import normalized GSTR-2B data\n"
-            "3. Reconcile and inspect evidence\n"
-            "4. Prepare and approve supplier drafts\n"
-            "5. Review audit history"
-        )
-        st.caption("Live message delivery is disabled.")
-        if actor != "local-demo":
-            st.caption(f"Signed in as {actor}")
-            if st.button("Sign out", key="sign_out"):
-                st.logout()
-
-    st.divider()
-    st.caption(f"Active database: `{db.get_database_path()}`")
-
-    with st.expander("Operational audit history"):
-        try:
-            audit_events = db.get_system_audit_events()
-        except Exception as exc:
-            st.error(f"Could not load operational audit history: {exc}")
-        else:
-            if audit_events:
-                st.dataframe(audit_events, alt="Recent operational audit events")
-            else:
-                st.info("No operational actions have been recorded yet.")
-
-    st.divider()
-    st.header("Demo data", icon=":material/science:")
+    st.header("Demo data", icon=":material/science:", anchor="demo")
     st.caption(
-        "All seed data is synthetic: supplier names are marked '(Synthetic)', "
-        "GSTINs and phone numbers are fabricated, and invoices carry "
-        "source='demo-seed'. Seeding is idempotent — clicking twice never "
-        "duplicates records."
+        "Seed a synthetic workspace for evaluation. Seeding is idempotent "
+        "and never changes existing records; every supplier and amount is "
+        "fabricated."
     )
     seed_error = None
     seed_result = None
@@ -158,19 +758,33 @@ def main() -> None:
             "Existing records were not modified."
         )
 
-    st.divider()
-    st.header("Invoice validation", icon=":material/fact_check:")
-    st.caption(
-        "Checks GSTIN format + check digit, required fields, tax arithmetic "
-        "(integer paise), intra- vs inter-state structure and duplicates. "
-        "GSTIN checks are format/checksum only — live GST registration is "
-        "NOT verified. A 'valid' result means these field checks passed; it "
-        "does not determine ITC eligibility. Invalid and needs-review "
-        "invoices are excluded from reconciliation."
+    st.header(
+        "Invoice validation",
+        icon=":material/fact_check:",
+        anchor="validation",
     )
+    st.caption(
+        "Check GSTIN structure, invoice arithmetic, dates, and duplicate "
+        "keys. A pass is a field check, not a live registration or ITC "
+        "decision."
+    )
+    with st.expander("Validation rules and limits"):
+        st.caption(
+            "Checks GSTIN format + check digit, required fields, tax "
+            "arithmetic (integer paise), intra- vs inter-state structure and "
+            "duplicates. GSTIN checks are format/checksum only — live GST "
+            "registration is NOT verified. A 'valid' result means these "
+            "field checks passed; it does not determine ITC eligibility. "
+            "Invalid and needs-review invoices are excluded from "
+            "reconciliation."
+        )
     validate_error = None
     validate_results = None
-    if st.button("Validate all invoices", key="validate_all"):
+    if st.button(
+        "Validate all invoices",
+        key="validate_all",
+        type="primary",
+    ):
         try:
             validate_results = db.revalidate_all_invoices()
             _audit(actor, "invoices_validated", "invoice_set", "all", count=len(validate_results))
@@ -243,7 +857,11 @@ def main() -> None:
 
     st.markdown("**Suppliers**")
     if suppliers:
-        st.dataframe(suppliers, alt="Suppliers registered in this workspace")
+        st.dataframe(
+            suppliers,
+            alt="Suppliers registered in this workspace",
+            hide_index=True,
+        )
     else:
         st.info("No suppliers yet — click 'Seed demo data' to create synthetic ones.")
 
@@ -264,6 +882,7 @@ def main() -> None:
                     st.dataframe(
                         rows,
                         alt=f"Invoices in the {name.lower()} validation group",
+                        hide_index=True,
                     )
                 else:
                     st.info(f"No {name.lower()} invoices.")
@@ -286,17 +905,23 @@ def main() -> None:
     else:
         st.info("No invoices yet.")
 
-    st.divider()
-    st.header("GSTR-2B import", icon=":material/upload_file:")
-    st.caption(
-        "Supported file types: CSV and XLSX with the normalized header row "
-        "supplier_gstin, invoice_number, invoice_date (YYYY-MM-DD), "
-        "tax_period (YYYY-MM), taxable_value, cgst, sgst, igst, total_gst. "
-        "Amounts are rupee values with up to 2 decimals and are stored as "
-        "integer paise. GSTIN checks are syntax/checksum only — live GST "
-        "registration is NOT verified. Importing never modifies purchase "
-        "invoices and performs no reconciliation."
+    st.header(
+        "GSTR-2B import",
+        icon=":material/upload_file:",
+        anchor="import-gstr2b",
     )
+    st.caption(
+        "Stage normalized CSV or XLSX rows with a full audit trail. Import "
+        "never modifies purchase invoices and performs no reconciliation."
+    )
+    with st.expander("Accepted schema and checks"):
+        st.caption(
+            "Required columns: supplier_gstin, invoice_number, invoice_date "
+            "(YYYY-MM-DD), tax_period (YYYY-MM), taxable_value, cgst, sgst, "
+            "igst, total_gst. Amounts use rupee decimals and are stored as "
+            "integer paise. GSTIN checks are syntax/checksum only; live GST "
+            "registration is NOT verified. XLSX reads the active worksheet."
+        )
 
     uploaded = st.file_uploader(
         "Upload GSTR-2B file",
@@ -336,6 +961,7 @@ def main() -> None:
             "Import GSTR-2B file",
             key="gstr2b_import",
             disabled=not confirm_reimport,
+            type="primary",
         ):
             try:
                 parsed = gstr2b.parse_gstr2b(content, uploaded.name)
@@ -368,7 +994,11 @@ def main() -> None:
 
     if imports:
         st.markdown("**Import batches**")
-        st.dataframe(imports, alt="Imported normalized GSTR-2B batches")
+        st.dataframe(
+            imports,
+            alt="Imported normalized GSTR-2B batches",
+            hide_index=True,
+        )
 
         selected_batch = st.selectbox(
             "Inspect batch",
@@ -380,6 +1010,7 @@ def main() -> None:
             st.dataframe(
                 batch_rows,
                 alt="Rows and validation outcomes in the selected import batch",
+                hide_index=True,
             )
             rejected_rows = [
                 row for row in batch_rows if row["Status"] != "valid"
@@ -396,18 +1027,26 @@ def main() -> None:
     else:
         st.info("No GSTR-2B imports yet.")
 
-    st.divider()
-    st.header("Reconciliation", icon=":material/compare_arrows:")
-    st.caption(
-        "Exact-match-first on normalized supplier GSTIN + invoice number + "
-        "tax period; GST amounts are compared in integer paise. Tolerance "
-        "0 means exact equality. Non-exact candidates are flagged for "
-        "review, never auto-accepted. Duplicate or ambiguous matches are "
-        "NEEDS_REVIEW and no candidate is chosen. 'Missing from 2B' only "
-        "means this batch has no usable counterpart — it does NOT prove "
-        "supplier non-filing, ITC eligibility or recoverability. No AI is "
-        "used."
+    st.header(
+        "Reconciliation",
+        icon=":material/compare_arrows:",
+        anchor="reconciliation",
     )
+    st.caption(
+        "Match on GSTIN, invoice number, tax period, and exact GST amounts. "
+        "Ambiguity goes to review; no candidate is auto-selected."
+    )
+    with st.expander("Matching policy and limits"):
+        st.caption(
+            "Exact-match-first on normalized supplier GSTIN + invoice number "
+            "+ tax period; GST amounts are compared in integer paise. "
+            "Tolerance 0 means exact equality. Non-exact candidates are "
+            "flagged for review, never auto-accepted. Duplicate or ambiguous "
+            "matches are NEEDS_REVIEW and no candidate is chosen. 'Missing "
+            "from 2B' only means this batch has no usable counterpart — it "
+            "does NOT prove supplier non-filing, ITC eligibility or "
+            "recoverability. No AI is used."
+        )
 
     if not imports:
         st.info(
@@ -420,19 +1059,24 @@ def main() -> None:
             f"({row['Accepted']}/{row['Rows']} accepted)": row["Batch"]
             for row in imports
         }
-        selected_label = st.selectbox(
+        batch_column, tolerance_column = st.columns([2.4, 1])
+        selected_label = batch_column.selectbox(
             "GSTR-2B batch to reconcile",
             options=list(batch_labels),
             key="recon_batch",
         )
-        tolerance = st.number_input(
+        tolerance = tolerance_column.number_input(
             "Amount tolerance (paise; 0 = exact)",
             min_value=0,
             value=0,
             step=1,
             key="recon_tolerance",
         )
-        if st.button("Reconcile selected batch", key="reconcile"):
+        if st.button(
+            "Reconcile selected batch",
+            key="reconcile",
+            type="primary",
+        ):
             try:
                 summary = db.reconcile_gstr2b_import(
                     batch_labels[selected_label], int(tolerance)
@@ -470,7 +1114,11 @@ def main() -> None:
     else:
         if runs:
             st.markdown("**Reconciliation run history** (newest first)")
-            st.dataframe(runs, alt="Persisted reconciliation runs")
+            st.dataframe(
+                runs,
+                alt="Persisted reconciliation runs",
+                hide_index=True,
+            )
             selected_run = st.selectbox(
                 "Inspect reconciliation run",
                 options=[row["Run"] for row in runs],
@@ -520,23 +1168,33 @@ def main() -> None:
                 st.dataframe(
                     db.get_reconciliation_results(selected_run),
                     alt="Invoice-level reconciliation statuses and evidence",
+                    hide_index=True,
                 )
         else:
             st.info("No reconciliation runs yet.")
 
-    st.divider()
-    st.header("Supplier follow-ups", icon=":material/draft:")
-    st.caption(
-        "Only validated purchase invoices with an unambiguous "
-        "MISSING_FROM_2B result in the latest reconciliation run for the "
-        "selected batch can become drafts. Matched, amount-mismatched, "
-        "needs-review, not-eligible and invalid invoices are excluded. "
-        "Drafts require human review and explicit approval. Approval records "
-        "that review; live delivery is disabled. The optional mock action "
-        "below never uses the network. A missing 2B entry does not "
-        "establish supplier fault, "
-        "ITC eligibility or recoverability. No contact details are invented."
+    st.header(
+        "Supplier follow-ups",
+        icon=":material/draft:",
+        anchor="follow-ups",
     )
+    st.caption(
+        "Draft follow-ups only for validated invoices with an unambiguous "
+        "MISSING_FROM_2B result. Human approval records the decision; live "
+        "delivery remains disabled."
+    )
+    with st.expander("Who is eligible and what approval means"):
+        st.caption(
+            "Only validated purchase invoices with an unambiguous "
+            "MISSING_FROM_2B result in the latest reconciliation run for the "
+            "selected batch can become drafts. Matched, amount-mismatched, "
+            "needs-review, not-eligible and invalid invoices are excluded. "
+            "Drafts require human review and explicit approval. Approval "
+            "records that review; live delivery is disabled. The optional "
+            "mock action below never uses the network. A missing 2B entry "
+            "does not establish supplier fault, ITC eligibility or "
+            "recoverability. No contact details are invented."
+        )
 
     flash = st.session_state.pop("followup_flash", None)
     if flash is not None:
@@ -615,6 +1273,7 @@ def main() -> None:
                     st.dataframe(
                         summary_rows,
                         alt="Supplier groups eligible for follow-up review",
+                        hide_index=True,
                     )
 
                     with st.expander("Preview planned draft text"):
@@ -628,6 +1287,7 @@ def main() -> None:
                     if st.button(
                         "Generate follow-up drafts",
                         key="generate_followups",
+                        type="primary",
                     ):
                         try:
                             generated = db.generate_followup_drafts(
@@ -670,7 +1330,8 @@ def main() -> None:
                                 "Excluded because": item["reason"],
                             }
                             for item in excluded
-                        ], alt="Invoices excluded from follow-up and reasons")
+                        ], alt="Invoices excluded from follow-up and reasons",
+                            hide_index=True)
                 else:
                     st.caption("No invoices were excluded in this run.")
 
@@ -679,7 +1340,11 @@ def main() -> None:
                 )
                 if drafts:
                     st.markdown("**Saved drafts for this batch**")
-                    st.dataframe(drafts, alt="Saved follow-up drafts and status")
+                    st.dataframe(
+                        drafts,
+                        alt="Saved follow-up drafts and status",
+                        hide_index=True,
+                    )
                     draft_labels = {
                         f"#{row['Draft']} — {row['Supplier']} "
                         f"(run #{row['Run']}, {row['Status']})": row["Draft"]
@@ -762,6 +1427,7 @@ def main() -> None:
                             "Approve for delivery review",
                             key=f"followup_approve_{draft_id}",
                             disabled=not can_approve or not confirmed,
+                            type="primary",
                         ):
                             try:
                                 db.approve_followup_draft(
@@ -819,6 +1485,7 @@ def main() -> None:
                         st.dataframe(
                             db.get_followup_draft_invoices(draft_id),
                             alt="Invoices supporting the selected follow-up draft",
+                            hide_index=True,
                         )
                         st.caption(
                             f"Total taxable value: Rs "
@@ -831,6 +1498,7 @@ def main() -> None:
                             st.dataframe(
                                 db.get_followup_draft_events(draft_id),
                                 alt="Audit history for the selected follow-up draft",
+                                hide_index=True,
                             )
                 else:
                     st.info(
@@ -839,15 +1507,23 @@ def main() -> None:
                         "drafts."
                     )
 
-    st.divider()
-    st.header("Later-statement verification", icon=":material/fact_check:")
-    st.caption(
-        "Compare an approved follow-up with another imported GSTR-2B batch. "
-        "This records whether a unique supplier/invoice row appears and "
-        "whether its GST amount agrees. A missing row does not prove "
-        "supplier non-filing or establish ITC eligibility or recovery. "
-        "Invoices and prior reconciliation evidence remain unchanged."
+    st.header(
+        "Later-statement verification",
+        icon=":material/fact_check:",
+        anchor="later-statement",
     )
+    st.caption(
+        "Compare an approved follow-up with a separate imported batch. "
+        "Evidence is appended; invoices, prior runs, and draft status stay "
+        "unchanged."
+    )
+    with st.expander("What the evidence means"):
+        st.caption(
+            "This records whether a unique supplier/invoice row appears and "
+            "whether its GST amount agrees. A missing row does not prove "
+            "supplier non-filing or establish ITC eligibility or recovery. "
+            "Invoices and prior reconciliation evidence remain unchanged."
+        )
     try:
         verification_drafts = [
             row for row in db.get_followup_drafts()
@@ -896,6 +1572,7 @@ def main() -> None:
             if st.button(
                 "Record later-statement check",
                 key="later_verify_run",
+                type="primary",
             ):
                 try:
                     db.verify_followup_with_later_import(
@@ -938,18 +1615,28 @@ def main() -> None:
                 "Recorded": row["created_at"],
             }
             for row in verification_history
-        ], alt="Audited later-statement checks for approved follow-ups")
+        ], alt="Audited later-statement checks for approved follow-ups",
+            hide_index=True)
     else:
         st.info("No later-statement checks recorded yet.")
 
-    st.divider()
-    st.header("Delivery status", icon=":material/history:")
-    st.caption(
-        "Live WhatsApp delivery is disabled in this build. A draft approval "
-        "only records human review; it never sends a message. Mock delivery "
-        "is available for workflow testing and makes no network request. "
-        "A phone number on file does not prove consent or ownership."
+    st.header(
+        "Delivery status",
+        icon=":material/history:",
+        anchor="delivery",
     )
+    st.caption(
+        "Inspect delivery evidence or run a simulated send. Live WhatsApp "
+        "delivery is disabled and approval alone sends nothing."
+    )
+    with st.expander("Delivery safety and consent"):
+        st.caption(
+            "Live WhatsApp delivery is disabled in this build. A draft "
+            "approval only records human review; it never sends a message. "
+            "Mock delivery is available for workflow testing and makes no "
+            "network request. A phone number on file does not prove consent "
+            "or ownership."
+        )
 
     delivery_flash = st.session_state.pop("delivery_flash", None)
     if delivery_flash is not None:
@@ -1074,6 +1761,7 @@ def main() -> None:
                     send_label,
                     key=f"delivery_send_{delivery_draft_id}",
                     disabled=not confirmed_send,
+                    type="primary",
                 ):
                     try:
                         record = delivery.deliver_approved_draft(
@@ -1143,7 +1831,8 @@ def main() -> None:
                 ),
             }
             for row in all_deliveries
-        ], alt="Delivery attempts with status and safe provider details")
+        ], alt="Delivery attempts with status and safe provider details",
+            hide_index=True)
         resolved_deliveries = [
             row for row in all_deliveries if row["resolution_outcome"]
         ]
@@ -1161,7 +1850,8 @@ def main() -> None:
                         ),
                     }
                     for row in resolved_deliveries
-                ], alt="Operator-provided audit records for resolved deliveries")
+                ], alt="Operator-provided audit records for resolved deliveries",
+                    hide_index=True)
     else:
         st.caption("No delivery attempts recorded yet.")
 
