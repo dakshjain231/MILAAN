@@ -15,6 +15,8 @@ Run: .venv/bin/streamlit run app.py
 
 import html
 import sys
+import textwrap
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -23,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import db  # noqa: E402
 import delivery  # noqa: E402
 import gstr2b  # noqa: E402
+import reconciliation  # noqa: E402
 import security  # noqa: E402
 import validation  # noqa: E402
 
@@ -502,6 +505,880 @@ code {
     font-size: 1.32rem !important;
   }
 }
+
+/* Dashboard surface */
+.stApp {
+  background: #f6f7f5;
+}
+
+.block-container {
+  max-width: 1480px;
+  padding: 0.4rem 2rem 3.5rem;
+}
+
+[data-testid="stHeader"] {
+  height: 2.6rem;
+}
+
+section[data-testid="stSidebar"] {
+  width: 264px !important;
+  min-width: 264px !important;
+  border-right: 0;
+  background: #072e27 !important;
+}
+
+section[data-testid="stSidebar"] > div {
+  background: transparent !important;
+}
+
+[data-testid="stSidebarUserContent"] {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 1.5rem);
+  padding: 1.3rem 0.85rem 0.9rem;
+}
+
+.sb-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.35rem 0.45rem 1.1rem;
+  border-bottom: 1px solid rgba(226, 242, 234, 0.1);
+}
+
+.sb-logo {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: #e8efe5;
+}
+
+.sb-name {
+  color: #f4f8f4;
+  font-size: 1.65rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.035em;
+}
+
+.sb-sub {
+  margin-top: 0.4rem;
+  color: #9fb4a8;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.sb-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.1rem;
+}
+
+.sb-nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 44px;
+  padding: 0.62rem 0.75rem;
+  border-radius: 8px;
+  color: #c7d6cd;
+  font-size: 0.84rem;
+  font-weight: 500;
+  text-decoration: none !important;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.sb-nav a:hover {
+  background: rgba(255, 255, 255, 0.055);
+  color: #ffffff;
+}
+
+.sb-nav a.active {
+  background: #1c4b3d;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.sb-nav svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  opacity: 0.9;
+}
+
+.sb-nav a.active svg {
+  opacity: 1;
+}
+
+.sb-nav-label {
+  margin: 1.15rem 0.75rem 0.35rem;
+  color: #789287;
+  font-size: 0.59rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sb-env {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.5rem 0.75rem;
+  color: #a8bdb2;
+  font-size: 0.71rem;
+}
+
+.sb-footer {
+  margin-top: auto;
+  padding: 1rem 0.55rem 0;
+  border-top: 1px solid rgba(226, 242, 234, 0.1);
+  color: #d2dfd8;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.sb-version {
+  margin-top: 0.35rem;
+  color: #789287;
+  font-size: 0.68rem;
+}
+
+section[data-testid="stSidebar"] [data-testid="stExpander"] {
+  margin-top: 1rem;
+  border-color: rgba(226, 242, 234, 0.12);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary,
+section[data-testid="stSidebar"] [data-testid="stExpander"] p {
+  color: #b8ccc1;
+  font-size: 0.74rem;
+}
+
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+  color: #ffffff;
+}
+
+section[data-testid="stSidebar"] [data-testid="stDataFrame"] {
+  border-color: rgba(226, 242, 234, 0.12);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-bottom: 1.35rem;
+  padding: 0.95rem 1.2rem;
+  border: 1px solid #e3e8e2;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.workspace-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #15271f;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.workspace-name svg {
+  color: #78867f;
+}
+
+.workspace-gstin {
+  margin-top: 0.18rem;
+  color: #7d8b84;
+  font-size: 0.74rem;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.period-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.52rem 0.68rem;
+  border: 1px solid #dfe5df;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #35473f;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #08392f;
+  color: #eaf3ee;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.page-head {
+  margin: 0.3rem 0 1.3rem;
+}
+
+.page-title {
+  margin: 0;
+  color: #10241d;
+  font-size: 2.05rem;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.page-sub {
+  margin-top: 0.35rem;
+  color: #6d7c75;
+  font-size: 0.92rem;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.kpi-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  min-height: 112px;
+  padding: 1.05rem 1.15rem;
+  border: 1px solid #e3e8e2;
+  border-radius: 11px;
+  background: #ffffff;
+}
+
+.kpi-icon {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.kpi-icon.green {
+  background: #e5f1e8;
+  color: #0f5d43;
+}
+
+.kpi-icon.amber {
+  background: #fff1de;
+  color: #b37316;
+}
+
+.kpi-icon.lavender {
+  background: #efedff;
+  color: #4f3ca4;
+}
+
+.kpi-label {
+  color: #6f7d76;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.kpi-value {
+  margin-top: 0.15rem;
+  color: #10241d;
+  font-size: 1.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.kpi-meta {
+  margin-top: 0.35rem;
+  color: #8a968f;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.kpi-meta strong {
+  color: #1d7252;
+  font-weight: 650;
+}
+
+.dash-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2.15fr) minmax(270px, 1fr);
+  gap: 1.1rem;
+  margin-top: 1.1rem;
+}
+
+.dash-left,
+.dash-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.panel {
+  overflow: hidden;
+  border: 1px solid #e3e8e2;
+  border-radius: 11px;
+  background: #ffffff;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.05rem 1.25rem 0.85rem;
+}
+
+.panel-title {
+  margin: 0 !important;
+  padding-top: 0;
+  border-top: 0;
+  color: #192b23;
+  font-size: 1.02rem !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.015em;
+}
+
+.panel-link {
+  color: #0b6048;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.panel-link:hover {
+  color: #0a4c3a;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.mismatch-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.mismatch-table th {
+  padding: 0.62rem 0.8rem;
+  border-top: 1px solid #edf0ec;
+  border-bottom: 1px solid #edf0ec;
+  background: #fafbf9;
+  color: #6f7d76;
+  font-size: 0.71rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mismatch-table th:first-child,
+.mismatch-table td:first-child {
+  padding-left: 1.25rem;
+}
+
+.mismatch-table th:last-child,
+.mismatch-table td:last-child {
+  padding-right: 1.25rem;
+}
+
+.mismatch-table td {
+  padding: 0.78rem 0.8rem;
+  border-bottom: 1px solid #f0f2ef;
+  color: #273b32;
+  white-space: nowrap;
+}
+
+.mismatch-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.mismatch-table .invoice-number {
+  color: #1c332a;
+  font-weight: 600;
+}
+
+.mismatch-table .money {
+  font-variant-numeric: tabular-nums;
+}
+
+.table-action {
+  color: #0b6048;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.table-action:hover {
+  text-decoration: underline !important;
+}
+
+.empty-row {
+  padding: 1.5rem 1.25rem !important;
+  color: #7b8982 !important;
+  text-align: center !important;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.24rem 0.46rem;
+  border-radius: 5px;
+  font-size: 0.67rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.pill.red {
+  background: #fde7e2;
+  color: #a64335;
+}
+
+.pill.amber {
+  background: #fff0d5;
+  color: #95631f;
+}
+
+.pill.blue {
+  background: #e6f1f8;
+  color: #316c94;
+}
+
+.pill.green {
+  background: #e4f2e8;
+  color: #25664a;
+}
+
+.pill.gray {
+  background: #eef0ee;
+  color: #697770;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 1.1rem;
+}
+
+.breakdown-body {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 0.4rem 1.25rem 1.25rem;
+}
+
+.donut-wrap {
+  position: relative;
+  width: 146px;
+  height: 146px;
+  flex: 0 0 auto;
+}
+
+.donut {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.donut::after {
+  position: absolute;
+  inset: 25px;
+  border-radius: 50%;
+  background: #ffffff;
+  content: "";
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.donut-center strong {
+  color: #14271f;
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.donut-center span {
+  margin-top: 0.25rem;
+  color: #7d8a83;
+  font-size: 0.65rem;
+}
+
+.legend {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.58rem;
+  min-width: 0;
+}
+
+.legend-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  color: #45564d;
+  font-size: 0.74rem;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend-value {
+  color: #1b3026;
+  font-size: 0.73rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #6e7c75;
+  font-size: 0.68rem;
+}
+
+.trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.trend-key {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.trend-body {
+  padding: 0.2rem 1.25rem 1.2rem;
+}
+
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.7rem;
+  height: 172px;
+  padding: 0.6rem 0 0;
+  background: repeating-linear-gradient(
+    to top,
+    #edf0ec 0,
+    #edf0ec 1px,
+    transparent 1px,
+    transparent 43px
+  );
+}
+
+.trend-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.bar-stack {
+  display: flex;
+  width: min(100%, 32px);
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  border-radius: 4px 4px 0 0;
+}
+
+.bar-mismatch {
+  background: #f5cf8b;
+}
+
+.bar-matched {
+  background: #2d7a59;
+}
+
+.trend-label {
+  color: #7c8a82;
+  font-size: 0.65rem;
+}
+
+.quick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 0.9rem 0.95rem;
+}
+
+.quick-action {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.72rem 0.75rem;
+  border: 1px solid #e5e9e4;
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: #253a30;
+  text-decoration: none !important;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.quick-action:hover {
+  border-color: #a9c3b5;
+  background: #f6faf7;
+}
+
+.quick-action svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: #4c685a;
+}
+
+.quick-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.quick-title {
+  display: block;
+  color: #20362b;
+  font-size: 0.83rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.quick-note {
+  display: block;
+  margin-top: 0.1rem;
+  color: #849189;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.quick-arrow {
+  color: #8b9891;
+  font-size: 0.95rem;
+}
+
+.activity-list {
+  margin: 0;
+  padding: 0 1.25rem 1.15rem;
+  list-style: none;
+}
+
+.activity-item {
+  position: relative;
+  padding: 0 0 1.05rem 1.1rem;
+  border-left: 1px solid #e5e9e4;
+}
+
+.activity-item:last-child {
+  padding-bottom: 0;
+  border-left-color: transparent;
+}
+
+.activity-dot {
+  position: absolute;
+  top: 0.16rem;
+  left: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6b7d73;
+}
+
+.activity-dot.green {
+  background: #2d7a59;
+}
+
+.activity-dot.amber {
+  background: #d4a24a;
+}
+
+.activity-dot.blue {
+  background: #4b8db8;
+}
+
+.activity-title {
+  color: #263b31;
+  font-size: 0.77rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.activity-time {
+  margin-top: 0.15rem;
+  color: #8b9891;
+  font-size: 0.66rem;
+}
+
+.dash-empty {
+  padding: 1.1rem 1.25rem 1.3rem;
+  color: #7c8a82;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-right {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (max-width: 860px) {
+  section[data-testid="stSidebar"] {
+    width: min(84vw, 300px) !important;
+    min-width: 0 !important;
+  }
+
+  .block-container {
+    padding: 0.35rem 1rem 2.5rem;
+  }
+
+  .chart-grid,
+  .dash-right {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .page-title {
+    font-size: 1.72rem;
+  }
+
+  .breakdown-body {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar {
+    padding: 0.85rem 1rem;
+  }
+
+  .mismatch-table {
+    min-width: 720px;
+  }
+}
+
+[data-testid="stToolbarActions"],
+[data-testid="stAppDeployButton"],
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"],
+#MainMenu {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+header[data-testid="stHeader"] {
+  height: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+[data-testid="stExpandSidebarButton"] {
+  position: fixed;
+  top: 14px;
+  left: 16px;
+  z-index: 1001;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #dfe5df;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(16, 36, 29, 0.08);
+  pointer-events: auto;
+}
+
+[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"] {
+  color: #13251f !important;
+  font-size: 1.25rem;
+}
+
+@media (min-width: 861px) {
+  [data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .block-container {
+    padding-top: 3.6rem;
+  }
+}
+
+section[data-testid="stSidebar"] [data-testid="stExpander"] details {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035) !important;
+}
+
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  background: transparent !important;
+}
 </style>
 """
 
@@ -510,107 +1387,766 @@ def _inject_styles() -> None:
     st.markdown(APP_CSS, unsafe_allow_html=True)
 
 
-def _render_masthead(ready: bool, actor: str) -> None:
-    status_class = "status-pill" if ready else "status-pill alert"
-    status_text = "Database ready" if ready else "Database needs attention"
-    actor_label = (
-        "Local demo" if actor == "local-demo"
-        else html.escape(actor)
+_MONTHS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+_EVENT_LABELS = {
+    "demo_seeded": "Demo workspace seeded",
+    "invoices_validated": "Invoice validation completed",
+    "reconciliation_completed": "Reconciliation completed",
+    "followup_drafts_generated": "Follow-up drafts generated",
+    "followup_draft_edited": "Follow-up draft edited",
+    "followup_draft_approved": "Follow-up draft approved",
+    "followup_draft_skipped": "Follow-up draft skipped",
+    "later_statement_checked": "Later-statement check recorded",
+}
+
+_STATUS_DISPLAY = {
+    reconciliation.STATUS_MISSING_FROM_2B: (
+        "Not in GSTR-2B", "Missing", "red",
+    ),
+    reconciliation.STATUS_AMOUNT_MISMATCH: (
+        "Amount mismatch", "Mismatch", "amber",
+    ),
+    reconciliation.STATUS_NEEDS_REVIEW: (
+        "Needs review", "Review", "blue",
+    ),
+    reconciliation.STATUS_NOT_ELIGIBLE: (
+        "Not eligible", "Excluded", "gray",
+    ),
+}
+
+
+def _inr(amount: float) -> str:
+    rounded = int(round(float(amount)))
+    sign = "-" if rounded < 0 else ""
+    digits = str(abs(rounded))
+    if len(digits) > 3:
+        last_three = digits[-3:]
+        rest = digits[:-3]
+        groups = []
+        while len(rest) > 2:
+            groups.insert(0, rest[-2:])
+            rest = rest[:-2]
+        if rest:
+            groups.insert(0, rest)
+        digits = ",".join(groups + [last_three])
+    return f"{sign}₹{digits}"
+
+
+def _parse_amount(value) -> float:
+    try:
+        return float(str(value or "0").replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _display_date(value) -> str:
+    raw = str(value or "")[:10]
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").strftime("%d %b %Y")
+    except ValueError:
+        return raw
+
+
+def _display_time(value) -> str:
+    raw = str(value or "")[:19]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%d %b %Y · %H:%M")
+        except ValueError:
+            continue
+    return _display_date(value)
+
+
+def _period_label(period: str) -> str:
+    try:
+        year, month = str(period).split("-")[:2]
+        return _MONTHS[int(month) - 1]
+    except (ValueError, IndexError):
+        return str(period)
+
+
+def _activity_label(event_type: str) -> str:
+    if event_type in _EVENT_LABELS:
+        return _EVENT_LABELS[event_type]
+    return event_type.replace("_", " ").capitalize()
+
+
+def _load_dashboard() -> dict:
+    invoices = db.get_invoices()
+    suppliers = db.get_suppliers()
+    latest_run = db.get_latest_reconciliation_run()
+    summary = (
+        db.get_reconciliation_summary(latest_run["id"])
+        if latest_run is not None else None
     )
-    st.markdown(
+    results = (
+        db.get_reconciliation_results(latest_run["id"])
+        if latest_run is not None else []
+    )
+    invoice_by_id = {row["ID"]: row for row in invoices}
+    supplier_gstin = {
+        row["Supplier"]: row["GSTIN"] for row in suppliers
+    }
+    audit_events = db.get_system_audit_events(limit=5)
+
+    has_run = summary is not None
+    validation_issues = [
+        row for row in invoices
+        if row["Validation"] in ("invalid", "needs_review")
+    ]
+
+    if has_run:
+        by_status = summary["by_status"]
+        matched = by_status[reconciliation.STATUS_MATCHED]["count"]
+        exception_total = sum(
+            item["count"] for status, item in by_status.items()
+            if status != reconciliation.STATUS_MATCHED
+        )
+        gst_exceptions = sum(
+            item["total_gst_paise"] for status, item in by_status.items()
+            if status != reconciliation.STATUS_MATCHED
+        ) / 100
+    else:
+        matched = 0
+        exception_total = len(validation_issues)
+        gst_exceptions = sum(
+            _parse_amount(row["Total GST (Rs)"])
+            for row in validation_issues
+        )
+
+    if has_run:
+        category_specs = [
+            (
+                reconciliation.STATUS_MISSING_FROM_2B,
+                "Not in GSTR-2B",
+                "#ef7b68",
+            ),
+            (
+                reconciliation.STATUS_AMOUNT_MISMATCH,
+                "Amount mismatch",
+                "#f0c35c",
+            ),
+            (
+                reconciliation.STATUS_NEEDS_REVIEW,
+                "Needs review",
+                "#5aa8d8",
+            ),
+            (
+                reconciliation.STATUS_NOT_ELIGIBLE,
+                "Not eligible",
+                "#7eab93",
+            ),
+        ]
+        categories = [
+            {
+                "label": label,
+                "count": by_status[status]["count"],
+                "color": color,
+            }
+            for status, label, color in category_specs
+        ]
+    else:
+        categories = [
+            {
+                "label": "Validation failed",
+                "count": sum(
+                    row["Validation"] == "invalid" for row in invoices
+                ),
+                "color": "#ef7b68",
+            },
+            {
+                "label": "Needs review",
+                "count": sum(
+                    row["Validation"] == "needs_review" for row in invoices
+                ),
+                "color": "#f0c35c",
+            },
+        ]
+
+    for category in categories:
+        category["pct"] = (
+            category["count"] / exception_total * 100
+            if exception_total else 0
+        )
+
+    recent = []
+    if has_run:
+        for result in results:
+            status = result["Status"]
+            if status == reconciliation.STATUS_MATCHED:
+                continue
+            invoice = invoice_by_id.get(result["Invoice #"], {})
+            issue, pill, tone = _STATUS_DISPLAY.get(
+                status, (status, status, "gray")
+            )
+            recent.append({
+                "sort_date": str(invoice.get("Date", "")),
+                "invoice": result["Invoice number"],
+                "date": _display_date(invoice.get("Date")),
+                "gstin": (
+                    result["GSTIN"]
+                    or supplier_gstin.get(invoice.get("Supplier"), "")
+                ),
+                "issue": issue,
+                "amount": _parse_amount(result["Invoice GST (Rs)"]),
+                "pill": pill,
+                "tone": tone,
+            })
+    else:
+        for invoice in validation_issues:
+            invalid = invoice["Validation"] == "invalid"
+            recent.append({
+                "sort_date": str(invoice.get("Date", "")),
+                "invoice": invoice["Invoice"],
+                "date": _display_date(invoice.get("Date")),
+                "gstin": supplier_gstin.get(invoice.get("Supplier"), ""),
+                "issue": "Validation failed" if invalid else "Needs review",
+                "amount": _parse_amount(invoice["Total GST (Rs)"]),
+                "pill": "Invalid" if invalid else "Review",
+                "tone": "red" if invalid else "amber",
+            })
+
+    recent.sort(key=lambda item: item["sort_date"], reverse=True)
+    recent = recent[:5]
+
+    trend = []
+    if has_run:
+        buckets = {}
+        for result in results:
+            invoice = invoice_by_id.get(result["Invoice #"], {})
+            period = str(invoice.get("Tax period", "") or "")
+            if not period:
+                continue
+            bucket = buckets.setdefault(
+                period, {"matched": 0, "exceptions": 0}
+            )
+            if result["Status"] == reconciliation.STATUS_MATCHED:
+                bucket["matched"] += 1
+            else:
+                bucket["exceptions"] += 1
+        trend = [
+            {
+                "period": period,
+                "label": _period_label(period),
+                "matched": bucket["matched"],
+                "exceptions": bucket["exceptions"],
+                "total": bucket["matched"] + bucket["exceptions"],
+            }
+            for period, bucket in sorted(buckets.items())
+        ]
+
+    activity = []
+    for event in audit_events:
+        event_type = str(event["Event"])
+        if "followup" in event_type:
+            color = "amber"
+        elif "later" in event_type:
+            color = "blue"
+        elif "reconciliation" in event_type or "delivery" in event_type:
+            color = "green"
+        else:
+            color = "gray"
+        activity.append({
+            "label": _activity_label(event_type),
+            "time": _display_time(event["At"]),
+            "color": color,
+        })
+
+    return {
+        "total_invoices": len(invoices),
+        "supplier_count": len(suppliers),
+        "matched": matched,
+        "exceptions": exception_total,
+        "gst_exceptions": gst_exceptions,
+        "categories": categories,
+        "recent": recent,
+        "trend": trend,
+        "activity": activity,
+        "has_run": has_run,
+        "run_id": latest_run["id"] if latest_run is not None else None,
+    }
+
+
+def _render_ui_html(markup: str) -> None:
+    compact = " ".join(
+        line.strip()
+        for line in textwrap.dedent(markup).splitlines()
+        if line.strip()
+    )
+    st.markdown(compact, unsafe_allow_html=True)
+
+
+def _refresh_dashboard(slot) -> None:
+    try:
+        data = _load_dashboard()
+    except Exception:
+        return
+    with slot.container():
+        _render_dashboard(data)
+
+
+def _render_topbar(actor: str) -> None:
+    workspace = "Demo Business" if actor == "local-demo" else actor
+    initial = "D" if actor == "local-demo" else (actor[:1].upper() or "M")
+    _render_ui_html(
         f"""
-        <div class="masthead">
-          <div class="masthead-brand">
-            <div class="brand-mark" aria-hidden="true">
-              <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
-                <path d="M5 8.25h8.25M5 17.75h8.25"
-                      stroke="#7dd8ba" stroke-width="2.1"
-                      stroke-linecap="round"/>
-                <path d="M15.25 6.5 21 13l-5.75 6.5"
-                      stroke="#f0faf5" stroke-width="2.1"
-                      stroke-linecap="round"
+        <div class="topbar">
+          <div>
+            <div class="workspace-name">
+              {html.escape(workspace)}
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"
+                   aria-hidden="true">
+                <path d="m4 6 4 4 4-4" stroke="currentColor"
+                      stroke-width="1.5" stroke-linecap="round"
                       stroke-linejoin="round"/>
               </svg>
             </div>
-            <div>
-              <div class="brand-name">MILAAN<span>.</span></div>
-              <div class="brand-sub">GST reconciliation workspace</div>
+            <div class="workspace-gstin">
+              Synthetic workspace · Live sending off
             </div>
           </div>
-          <div class="masthead-meta">
-            <span class="{status_class}">
-              <span class="status-dot"></span>{status_text}
+          <div class="topbar-actions">
+            <span class="period-chip">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"
+                   aria-hidden="true">
+                <rect x="2.5" y="3.5" width="11" height="10"
+                      rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M5 2.5v2M11 2.5v2M2.5 6.5h11"
+                      stroke="currentColor" stroke-width="1.2"
+                      stroke-linecap="round"/>
+              </svg>
+              All periods
             </span>
-            <span class="status-pill quiet">
-              <span class="status-dot"></span>Live sending off
-            </span>
-            <span class="status-pill quiet">{actor_label}</span>
+            <span class="avatar">{html.escape(initial)}</span>
           </div>
         </div>
-        <p class="masthead-note">
-          Review purchase records, reconcile normalized GSTR-2B data, and
-          keep every follow-up decision traceable. Findings support human
-          review and do not determine ITC eligibility.
-        </p>
         """,
-        unsafe_allow_html=True,
+    )
+
+
+def _render_dashboard(data: dict) -> None:
+    total = data["total_invoices"]
+    exceptions = data["exceptions"]
+    matched = data["matched"]
+    gst_exceptions = data["gst_exceptions"]
+    run_note = (
+        f"Latest run #{data['run_id']}" if data["has_run"]
+        else "Validation view · no run yet"
+    )
+
+    recent_rows = "".join(
+        f"""
+        <tr>
+          <td class="invoice-number">{html.escape(str(item["invoice"]))}</td>
+          <td>{html.escape(item["date"])}</td>
+          <td>{html.escape(item["gstin"] or "—")}</td>
+          <td>{html.escape(item["issue"])}</td>
+          <td class="money">
+            {html.escape(_inr(item["amount"]).replace("₹", ""))}
+          </td>
+          <td><span class="pill {item["tone"]}">
+            {html.escape(item["pill"])}
+          </span></td>
+          <td><a class="table-action" href="#reconciliation">View</a></td>
+        </tr>
+        """
+        for item in data["recent"]
+    )
+    if not recent_rows:
+        recent_rows = (
+            '<tr><td class="empty-row" colspan="7">'
+            "No open exceptions in the current view."
+            "</td></tr>"
+        )
+
+    if exceptions:
+        cursor = 0.0
+        segments = []
+        for category in data["categories"]:
+            start = cursor
+            cursor = min(100.0, cursor + category["pct"])
+            segments.append(
+                f"{category['color']} {start:.2f}% {cursor:.2f}%"
+            )
+        donut_style = f"background: conic-gradient({', '.join(segments)});"
+    else:
+        donut_style = "background: #edf0ed;"
+
+    legend_rows = "".join(
+        f"""
+        <div class="legend-row">
+          <span class="legend-dot" style="background:{category['color']}"></span>
+          <span class="legend-label">{html.escape(category["label"])}</span>
+          <span class="legend-value">{category["pct"]:.0f}%</span>
+        </div>
+        """
+        for category in data["categories"]
+    )
+    if not legend_rows:
+        legend_rows = (
+            '<div class="legend-row"><span></span>'
+            "<span class=\"legend-label\">No open exceptions</span>"
+            '<span class="legend-value">0%</span></div>'
+        )
+
+    if data["trend"]:
+        max_total = max(item["total"] for item in data["trend"]) or 1
+        trend_columns = []
+        for point in data["trend"]:
+            height = max(8, round(point["total"] / max_total * 128))
+            matched_height = round(
+                point["matched"] / point["total"] * height
+            ) if point["total"] else 0
+            exception_height = max(0, height - matched_height)
+            trend_columns.append(
+                f"""
+                <div class="trend-col">
+                  <div class="bar-stack" style="height:{height}px">
+                    <div class="bar-mismatch"
+                         style="height:{exception_height}px"></div>
+                    <div class="bar-matched"
+                         style="height:{matched_height}px"></div>
+                  </div>
+                  <span class="trend-label">{html.escape(point["label"])}</span>
+                </div>
+                """
+            )
+        trend_html = (
+            '<div class="trend-chart">'
+            + "".join(trend_columns)
+            + "</div>"
+        )
+    else:
+        trend_html = (
+            '<div class="dash-empty">Run reconciliation to populate the '
+            "monthly trend.</div>"
+        )
+
+    if data["activity"]:
+        activity_html = "".join(
+            f"""
+            <li class="activity-item">
+              <span class="activity-dot {item["color"]}"></span>
+              <div class="activity-title">{html.escape(item["label"])}</div>
+              <div class="activity-time">{html.escape(item["time"])}</div>
+            </li>
+            """
+            for item in data["activity"]
+        )
+    else:
+        activity_html = (
+            '<li class="activity-item"><span class="activity-dot"></span>'
+            '<div class="activity-title">No activity recorded yet.</div>'
+            '<div class="activity-time">Seed demo data or upload a file to '
+            "begin.</div></li>"
+        )
+
+    _render_ui_html(
+        f"""
+        <div id="dashboard">
+          <div class="page-head">
+            <h1 class="page-title">Dashboard</h1>
+            <div class="page-sub">Overview of your ITC reconciliation</div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-icon green">
+                <svg width="25" height="25" viewBox="0 0 24 24"
+                     fill="none" aria-hidden="true">
+                  <path d="M6 3.5h7l5 5V21H6z" stroke="currentColor"
+                        stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M13 3.5v5h5M9 13h6M9 16.5h4"
+                        stroke="currentColor" stroke-width="1.6"
+                        stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div>
+                <div class="kpi-label">Total invoices</div>
+                <div class="kpi-value">{total:,}</div>
+                <div class="kpi-meta">{data["supplier_count"]} suppliers
+                  recorded</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon amber">
+                <svg width="25" height="25" viewBox="0 0 24 24"
+                     fill="none" aria-hidden="true">
+                  <path d="M12 4 21 20H3L12 4Z" stroke="currentColor"
+                        stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M12 9v5M12 17h.01" stroke="currentColor"
+                        stroke-width="1.7" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div>
+                <div class="kpi-label">Mismatches</div>
+                <div class="kpi-value">{exceptions:,}</div>
+                <div class="kpi-meta">{html.escape(run_note)}</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon green">
+                <svg width="25" height="25" viewBox="0 0 24 24"
+                     fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8.5" stroke="currentColor"
+                          stroke-width="1.6"/>
+                  <path d="m8.5 12 2.3 2.3 4.7-5"
+                        stroke="currentColor" stroke-width="1.7"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div>
+                <div class="kpi-label">Reconciled</div>
+                <div class="kpi-value">{matched:,}</div>
+                <div class="kpi-meta">Exact evidence matched</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon lavender">
+                <span style="font-size:1.38rem;font-weight:600">₹</span>
+              </div>
+              <div>
+                <div class="kpi-label">GST in exceptions</div>
+                <div class="kpi-value">{html.escape(_inr(gst_exceptions))}</div>
+                <div class="kpi-meta">Not a recovery or eligibility claim</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-main">
+            <div class="dash-left">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2 class="panel-title">Recent Mismatches</h2>
+                  <a class="panel-link" href="#reconciliation">View All →</a>
+                </div>
+                <div class="table-scroll">
+                  <table class="mismatch-table">
+                    <thead>
+                      <tr>
+                        <th>Invoice No.</th>
+                        <th>Date</th>
+                        <th>Supplier GSTIN</th>
+                        <th>Issue Type</th>
+                        <th>Amount (₹)</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>{recent_rows}</tbody>
+                  </table>
+                </div>
+              </section>
+
+              <div class="chart-grid">
+                <section class="panel">
+                  <div class="panel-head">
+                    <h2 class="panel-title">Mismatch Breakdown</h2>
+                  </div>
+                  <div class="breakdown-body">
+                    <div class="donut-wrap">
+                      <div class="donut" style="{donut_style}"></div>
+                      <div class="donut-center">
+                        <strong>{exceptions}</strong>
+                        <span>exceptions</span>
+                      </div>
+                    </div>
+                    <div class="legend">{legend_rows}</div>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-head">
+                    <h2 class="panel-title">Monthly Trend</h2>
+                    <div class="trend-legend">
+                      <span><i class="trend-key"
+                        style="background:#2d7a59"></i>Reconciled</span>
+                      <span><i class="trend-key"
+                        style="background:#f5cf8b"></i>Exceptions</span>
+                    </div>
+                  </div>
+                  <div class="trend-body">{trend_html}</div>
+                </section>
+              </div>
+            </div>
+
+            <div class="dash-right">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2 class="panel-title">Quick Actions</h2>
+                </div>
+                <div class="quick-list">
+                  <a class="quick-action" href="#import-gstr2b">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M6 3.5h7l5 5V21H6z" stroke="currentColor"
+                            stroke-width="1.5" stroke-linejoin="round"/>
+                      <path d="M13 3.5v5h5M12 17v-5M9.5 14.5 12 17l2.5-2.5"
+                            stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="quick-copy">
+                      <span class="quick-title">Upload Purchase Data</span>
+                      <span class="quick-note">CSV or Excel</span>
+                    </span>
+                    <span class="quick-arrow">›</span>
+                  </a>
+                  <a class="quick-action" href="#reconciliation">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M7 8h10M7 8l2.2-2.2M7 8l2.2 2.2M17 16H7M17 16l-2.2-2.2M17 16l-2.2 2.2"
+                            stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="quick-copy">
+                      <span class="quick-title">Run Reconciliation</span>
+                      <span class="quick-note">Match with GSTR-2B</span>
+                    </span>
+                    <span class="quick-arrow">›</span>
+                  </a>
+                  <a class="quick-action" href="#follow-ups">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="m4 11 16-7-6 16-2.7-6.3L4 11Z"
+                            stroke="currentColor" stroke-width="1.5"
+                            stroke-linejoin="round"/>
+                      <path d="m11.3 13.7 3-3" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <span class="quick-copy">
+                      <span class="quick-title">Review Follow-ups</span>
+                      <span class="quick-note">Drafts and pending approval</span>
+                    </span>
+                    <span class="quick-arrow">›</span>
+                  </a>
+                  <a class="quick-action" href="#delivery">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <rect x="4" y="3.5" width="16" height="17" rx="2"
+                            stroke="currentColor" stroke-width="1.5"/>
+                      <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <span class="quick-copy">
+                      <span class="quick-title">Open Delivery Audit</span>
+                      <span class="quick-note">Mock sends and evidence</span>
+                    </span>
+                    <span class="quick-arrow">›</span>
+                  </a>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <h2 class="panel-title">Recent Activity</h2>
+                  <a class="panel-link" href="#delivery">View All →</a>
+                </div>
+                <ul class="activity-list">{activity_html}</ul>
+              </section>
+            </div>
+          </div>
+        </div>
+        """,
     )
 
 
 def _render_sidebar(ready: bool, actor: str) -> None:
     database_path = html.escape(str(db.get_database_path().resolve()))
-    status_text = "Database ready" if ready else "Database needs attention"
+    status_text = "Database ready" if ready else "Database attention needed"
     with st.sidebar:
-        st.markdown(
+        _render_ui_html(
             """
-            <div class="rail-label">Reconciliation flow</div>
-            <p class="rail-intro">Work from validation to evidence. Every
-            stage is persisted, and approval never sends a message.</p>
-            <a class="rail-step" href="#validation">
-              <span class="rail-num">1</span>
-              <span><span class="rail-step-title">Invoice validation</span>
-              <span class="rail-step-note">Field, tax and duplicate checks</span></span>
-            </a>
-            <a class="rail-step" href="#import-gstr2b">
-              <span class="rail-num">2</span>
-              <span><span class="rail-step-title">GSTR-2B intake</span>
-              <span class="rail-step-note">Normalized CSV or XLSX with audit trail</span></span>
-            </a>
-            <a class="rail-step" href="#reconciliation">
-              <span class="rail-num">3</span>
-              <span><span class="rail-step-title">Reconciliation</span>
-              <span class="rail-step-note">Exact evidence and review routing</span></span>
-            </a>
-            <a class="rail-step" href="#follow-ups">
-              <span class="rail-num">4</span>
-              <span><span class="rail-step-title">Follow-up drafts</span>
-              <span class="rail-step-note">Human approval before delivery review</span></span>
-            </a>
-            <a class="rail-step" href="#later-statement">
-              <span class="rail-num">5</span>
-              <span><span class="rail-step-title">Later-statement check</span>
-              <span class="rail-step-note">Append evidence without changing history</span></span>
-            </a>
-            <a class="rail-step" href="#delivery">
-              <span class="rail-num">6</span>
-              <span><span class="rail-step-title">Delivery audit</span>
-              <span class="rail-step-note">Simulation and operator evidence</span></span>
-            </a>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <div class="rail-label">Environment</div>
-            <div class="rail-system">
-              <span class="status-dot"></span>{html.escape(status_text)}
+            <div class="sb-brand">
+              <div class="sb-logo" aria-hidden="true">
+                <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+                  <path d="M16 27C8.3 23.5 5 17.8 6.7 10.3 14 10 20 14.7 21.3 22.2c.2 2-1.7 4-5.3 4.8Z"
+                        fill="#5f8b65"/>
+                  <path d="M16.7 27c-.5-8.5 4.2-14.5 10.3-17.2 2.1 8.3-2.7 14.7-10.3 17.2Z"
+                        fill="#b7cbb1"/>
+                </svg>
+              </div>
+              <div>
+                <div class="sb-name">MILAAN</div>
+                <div class="sb-sub">ITC Reconciliation</div>
+              </div>
             </div>
-            <div class="rail-system">
-              <span class="status-dot"></span>Live messages disabled
-            </div>
-            <p class="rail-path">{database_path}</p>
+
+            <nav class="sb-nav" aria-label="Workspace">
+              <a class="active" href="#dashboard">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 10.5 12 4l8 6.5V20H4z" stroke="currentColor"
+                        stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M9.5 20v-5.5h5V20" stroke="currentColor"
+                        stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+                Dashboard
+              </a>
+              <a href="#import-gstr2b">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M6 3.5h7l5 5V21H6z" stroke="currentColor"
+                        stroke-width="1.5" stroke-linejoin="round"/>
+                  <path d="M13 3.5v5h5M12 17v-5M9.5 14.5 12 17l2.5-2.5"
+                        stroke="currentColor" stroke-width="1.5"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Upload Data
+              </a>
+              <a href="#reconciliation">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 4 21 20H3L12 4Z" stroke="currentColor"
+                        stroke-width="1.5" stroke-linejoin="round"/>
+                  <path d="M12 9v5M12 17h.01" stroke="currentColor"
+                        stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+                Mismatches
+              </a>
+              <a href="#follow-ups">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="m4 11 16-7-6 16-2.7-6.3L4 11Z"
+                        stroke="currentColor" stroke-width="1.5"
+                        stroke-linejoin="round"/>
+                  <path d="m11.3 13.7 3-3" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Follow-ups
+              </a>
+              <a href="#suppliers">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="9" cy="8.5" r="3" stroke="currentColor"
+                          stroke-width="1.5"/>
+                  <path d="M4 19c.4-3 2.3-4.8 5-4.8s4.6 1.8 5 4.8"
+                        stroke="currentColor" stroke-width="1.5"
+                        stroke-linecap="round"/>
+                  <path d="M16 6.2a2.6 2.6 0 0 1 0 5M17.5 14.5c1.6.5 2.5 2 2.8 4.5"
+                        stroke="currentColor" stroke-width="1.5"
+                        stroke-linecap="round"/>
+                </svg>
+                Suppliers
+              </a>
+              <a href="#delivery">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <rect x="4" y="3.5" width="16" height="17" rx="2"
+                        stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Audit Log
+              </a>
+              <a href="#settings">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" stroke="currentColor"
+                          stroke-width="1.5"/>
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V20.3h-2.97v-.11a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.1 15a1.7 1.7 0 0 0-1.56-1.03H5.4v-2.97h.14A1.7 1.7 0 0 0 7.1 9.97a1.7 1.7 0 0 0-.34-1.87L6.7 8.04l2.1-2.1.06.06a1.7 1.7 0 0 0 1.87.34 1.7 1.7 0 0 0 1.03-1.56V4.7h2.97v.08a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.87 1.7 1.7 0 0 0 1.56 1.03h.11v2.97h-.11A1.7 1.7 0 0 0 19.4 15Z"
+                        stroke="currentColor" stroke-width="1.25"
+                        stroke-linejoin="round"/>
+                </svg>
+                Settings
+              </a>
+            </nav>
             """,
-            unsafe_allow_html=True,
         )
         with st.expander("Operational audit"):
             try:
@@ -618,6 +2154,8 @@ def _render_sidebar(ready: bool, actor: str) -> None:
             except Exception as exc:
                 st.error(f"Could not load audit history: {exc}")
             else:
+                st.caption(status_text)
+                st.caption(f"Database: {database_path}")
                 if audit_events:
                     st.dataframe(
                         audit_events,
@@ -631,6 +2169,14 @@ def _render_sidebar(ready: bool, actor: str) -> None:
             st.caption(f"Signed in as {actor}")
             if st.button("Sign out", key="sign_out"):
                 st.logout()
+        _render_ui_html(
+            """
+            <div class="sb-footer">
+              Match. Detect. Resolve.
+              <div class="sb-version">v1.0.0 · Live sending off</div>
+            </div>
+            """,
+        )
 
 
 def _require_authorized_user() -> str:
@@ -695,8 +2241,19 @@ def main() -> None:
         st.error(f"Database error: {exc}")
         st.stop()
 
-    _render_masthead(ready, actor)
+    try:
+        dashboard = _load_dashboard()
+    except Exception as exc:
+        _render_topbar(actor)
+        _render_sidebar(ready, actor)
+        st.error(f"Could not load dashboard: {exc}")
+        st.stop()
+
+    _render_topbar(actor)
     _render_sidebar(ready, actor)
+    dashboard_slot = st.empty()
+    with dashboard_slot.container():
+        _render_dashboard(dashboard)
 
     st.header("Demo data", icon=":material/science:", anchor="demo")
     st.caption(
@@ -721,6 +2278,7 @@ def main() -> None:
             f"{seed_result['invoices']} invoice(s) added. "
             "Existing records were not modified."
         )
+        _refresh_dashboard(dashboard_slot)
 
     st.header(
         "Invoice validation",
@@ -770,6 +2328,7 @@ def main() -> None:
                 f"{counts['needs_review']} need review, "
                 f"{counts['invalid']} invalid."
             )
+            _refresh_dashboard(dashboard_slot)
             with st.expander("Validation details", expanded=True):
                 for entry in validate_results:
                     result = entry["result"]
@@ -819,6 +2378,7 @@ def main() -> None:
         "Not yet validated", status_summary["pending"], border=True
     )
 
+    st.markdown('<div id="suppliers"></div>', unsafe_allow_html=True)
     st.markdown("**Suppliers**")
     if suppliers:
         st.dataframe(
@@ -944,6 +2504,7 @@ def main() -> None:
                     f"row(s) accepted, {saved['rejected_rows']} rejected. "
                     "All source rows are kept in the audit trail."
                 )
+                _refresh_dashboard(dashboard_slot)
                 if saved["rejected_rows"]:
                     st.warning(
                         "Some rows were rejected; inspect the row-level "
@@ -1070,6 +2631,7 @@ def main() -> None:
                     )
                 else:
                     st.success(message)
+                _refresh_dashboard(dashboard_slot)
 
     try:
         runs = db.get_reconciliation_runs()
@@ -1974,6 +3536,31 @@ def main() -> None:
     st.caption(
         "Webhook status updates are deferred: DELIVERED/READ require an "
         "authenticated Meta webhook, which this build does not implement."
+    )
+
+    st.header(
+        "Settings & limits",
+        icon=":material/settings:",
+        anchor="settings",
+    )
+    st.caption(
+        "This build is intentionally read-only outside the workflow above. "
+        "No setting can enable live WhatsApp delivery."
+    )
+    settings_columns = st.columns(3)
+    settings_columns[0].markdown(
+        "**Data**  \n"
+        "Synthetic demo records only. GSTIN checks are structural; live "
+        "registration is not queried."
+    )
+    settings_columns[1].markdown(
+        "**Matching**  \n"
+        "Exact GSTIN + invoice + period keys. Ambiguous evidence is routed "
+        "to human review."
+    )
+    settings_columns[2].markdown(
+        "**Delivery**  \n"
+        "Mock-only. Approval records intent and never sends a message."
     )
 
 
