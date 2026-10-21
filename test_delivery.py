@@ -1027,26 +1027,29 @@ class DeliveryUITests(DatabaseTestCase):
     def app(self):
         from streamlit.testing.v1 import AppTest
 
-        return AppTest.from_file(
+        at = AppTest.from_file(
             str(Path(__file__).parent / "app.py"), default_timeout=30
         )
+        at.run()
+        at.switch_page("pages/6_followups.py").run()
+        return at
 
     def test_ui_does_not_send_on_render_or_approval(self):
         case = self.approved_draft()
-        at = self.app().run()
+        at = self.app()
         self.assertEqual(at.exception, [])
         self.assertEqual(self.delivery_count(), 0)
         self.assertEqual(
             db.get_followup_draft(case["draft_id"])["status"], "APPROVED"
         )
         captions = " ".join(item.value for item in at.caption)
-        self.assertIn("does not prove consent", captions)
+        self.assertIn("approval alone sends nothing", captions)
 
     def test_ui_requires_confirmation_then_records_mock_delivery(self):
         case = self.approved_draft()
         draft_id = case["draft_id"]
         with mock.patch("requests.post") as post:
-            at = self.app().run()
+            at = self.app()
             self.assertEqual(at.exception, [])
             at.checkbox(key=f"delivery_confirm_{draft_id}").check().run()
             at.button(key=f"delivery_send_{draft_id}").click().run()
@@ -1068,7 +1071,7 @@ class DeliveryUITests(DatabaseTestCase):
     def test_ui_real_mode_is_disabled_without_configuration(self):
         self.approved_draft()
         with mock.patch.dict(os.environ, {"WHATSAPP_ENABLED": "false"}):
-            at = self.app().run()
+            at = self.app()
             at.radio(key="delivery_mode").set_value(
                 "WhatsApp Cloud API (real)"
             ).run()
@@ -1086,7 +1089,7 @@ class DeliveryUITests(DatabaseTestCase):
             "WHATSAPP_API_VERSION": "v99.0",
         }
         with mock.patch.dict(os.environ, configured):
-            at = self.app().run()
+            at = self.app()
             at.radio(key="delivery_mode").set_value(
                 "WhatsApp Cloud API (real)"
             ).run()

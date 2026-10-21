@@ -737,36 +737,66 @@ def get_system_audit_events(limit: int = 100) -> list[dict]:
 
 # --- Synthetic demo data ---------------------------------------------------
 # Clearly marked synthetic: supplier names carry a "(Synthetic)" prefix,
-# GSTINs/phones are fabricated (PAN-style placeholder letters), and every
-# invoice gets source='demo-seed'. No real persons GSTINs/contact details.
+# GSTINs are fabricated but checksum-valid so the demo exercises the real
+# validation pipeline, and every invoice gets source='demo-seed'. One record
+# is deliberately invalid (a non-existent calendar date) so the demo shows a
+# validation failure without making every demo identifier malformed.
 DEMO_SUPPLIERS = [
-    ("(Synthetic) Demo Traders Pvt Ltd", "27FAKE1000F1Z5", "9900000011"),
-    ("(Synthetic) Demo Bearings Co", "29FAKE2000G1Z6", "9900000022"),
-    ("(Synthetic) Demo Kirana Stores", "24FAKE3000H1Z7", "9900000033"),
+    ("(Synthetic) Demo Traders Pvt Ltd", "27AAACS1234A1Z2", "9900000011"),
+    ("(Synthetic) Demo Bearings Co", "29AAACB5678B1ZP", "9900000022"),
+    ("(Synthetic) Demo Kirana Stores", "24AAACD9012C1ZB", "9900000033"),
 ]
 
 DEMO_INVOICES = [
     # (supplier gstin, invoice_number, invoice_date, tax_period,
     #  taxable_value, gst_rate, cgst, sgst, igst, total_gst,
     #  invoice_total, validation_status)
-    #
-    # Status "pending" (not "valid"): the supplier GSTINs below are
-    # deliberately fabricated placeholders that are NOT checksum-valid.
-    # Task 3 validation must flag them rather than treat them as verified.
-    ("27FAKE1000F1Z5", "INV-DEMO-001", "2026-03-05", "2026-03",
+    ("27AAACS1234A1Z2", "INV-DEMO-001", "2026-03-05", "2026-03",
      1_250_000, 18, 112_500, 112_500, 0, 225_000, 1_475_000, "pending"),
-    ("27FAKE1000F1Z5", "INV-DEMO-002", "2026-03-18", "2026-03",
+    ("27AAACS1234A1Z2", "INV-DEMO-002", "2026-03-18", "2026-03",
      824_050, 12, 49_443, 49_443, 0, 98_886, 922_936, "pending"),
-    ("27FAKE1000F1Z5", "INV-DEMO-003", "2026-04-02", "2026-04",
+    ("27AAACS1234A1Z2", "INV-DEMO-003", "2026-04-02", "2026-04",
      3_000_000, 5, 75_000, 75_000, 0, 150_000, 3_150_000, "pending"),
-    ("29FAKE2000G1Z6", "INV-DEMO-101", "2026-03-12", "2026-03",
+    ("29AAACB5678B1ZP", "INV-DEMO-101", "2026-03-12", "2026-03",
      4_500_000, 18, 405_000, 405_000, 0, 810_000, 5_310_000, "pending"),
-    ("29FAKE2000G1Z6", "INV-DEMO-102", "2026-03-25", "2026-03",
+    ("29AAACB5678B1ZP", "INV-DEMO-102", "2026-03-25", "2026-03",
      1_600_000, 18, 0, 0, 288_000, 288_000, 1_888_000, "pending"),
-    # Deliberately invalid record for later validation-testing.
-    ("24FAKE3000H1Z7", "INV-DEMO-201", "2026-04-14", "2026-04",
+    # Deliberately invalid record for validation-testing: 31 April does not
+    # exist. The GSTIN itself is structurally valid.
+    ("24AAACD9012C1ZB", "INV-DEMO-201", "2026-04-31", "2026-04",
      275_000, 12, 16_500, 16_500, 0, 33_000, 308_000, "invalid"),
 ]
+
+_LEGACY_DEMO_GSTINS = {
+    "27FAKE1000F1Z5": "27AAACS1234A1Z2",
+    "29FAKE2000G1Z6": "29AAACB5678B1ZP",
+    "24FAKE3000H1Z7": "24AAACD9012C1ZB",
+}
+
+
+def _repair_legacy_demo_identifiers(conn: sqlite3.Connection) -> None:
+    """Upgrade earlier demo-seeded GSTINs without touching user records.
+
+    Older builds seeded structurally invalid placeholder GSTINs, which made
+    every demo invoice fail validation. The repair is limited to the exact
+    synthetic supplier rows and the known demo invoice. It is a no-op on a
+    fresh database and never runs outside seed_demo_data.
+    """
+    for old, new in _LEGACY_DEMO_GSTINS.items():
+        conn.execute(
+            """UPDATE suppliers SET gstin = ?
+               WHERE gstin = ? AND supplier_name LIKE '(Synthetic)%'
+                 AND NOT EXISTS (
+                     SELECT 1 FROM suppliers WHERE gstin = ?
+                 )""",
+            (new, old, new),
+        )
+    conn.execute(
+        """UPDATE invoices SET invoice_date = '2026-04-31'
+           WHERE invoice_number = 'INV-DEMO-201'
+             AND source = 'demo-seed'
+             AND invoice_date = '2026-04-14'"""
+    )
 
 
 def seed_demo_data(conn: sqlite3.Connection | None = None) -> dict:
@@ -785,6 +815,7 @@ def seed_demo_data(conn: sqlite3.Connection | None = None) -> dict:
     try:
         added = {"suppliers": 0, "invoices": 0}
         with conn:
+            _repair_legacy_demo_identifiers(conn)
             for name, gstin, phone in DEMO_SUPPLIERS:
                 cur = conn.execute(
                     """INSERT INTO suppliers (supplier_name, gstin, contact_phone)
@@ -1007,6 +1038,88 @@ def revalidate_all_invoices() -> list[dict]:
     return entries
 
 
+def save_invoice_import(parsed) -> dict:
+    """Persist accepted purchase-invoice import rows in one transaction.
+
+    Suppliers are reused by normalized GSTIN and created only when absent.
+    Rows whose natural key already exists are counted as duplicates and are
+    never overwritten. Each inserted row is validated with the same
+    deterministic rules used elsewhere; its persisted validation_status is
+    the result. No row is silently discarded: duplicates and rejected rows
+    are reported in the return value.
+    """
+    imported = 0
+    suppliers_created = 0
+    duplicates = 0
+    with db() as conn:
+        for row in parsed.rows:
+            if not row.accepted:
+                continue
+            gstin = row.supplier_gstin
+            supplier = conn.execute(
+                "SELECT id FROM suppliers WHERE gstin = ?", (gstin,)
+            ).fetchone()
+            if supplier is None:
+                cursor = conn.execute(
+                    """INSERT INTO suppliers
+                           (supplier_name, gstin, contact_phone)
+                       VALUES (?, ?, ?)""",
+                    (
+                        row.supplier_name,
+                        gstin,
+                        row.contact_phone or None,
+                    ),
+                )
+                supplier_id = cursor.lastrowid
+                suppliers_created += 1
+            else:
+                supplier_id = supplier["id"]
+
+            existing = conn.execute(
+                """SELECT 1 FROM invoices
+                   WHERE supplier_id = ? AND invoice_number = ?
+                     AND tax_period = ?""",
+                (supplier_id, row.invoice_number, row.tax_period),
+            ).fetchone()
+            if existing is not None:
+                duplicates += 1
+                continue
+
+            record = row.record()
+            result = validation.validate_invoice(record)
+            conn.execute(
+                """INSERT INTO invoices
+                       (supplier_id, invoice_number, invoice_date,
+                        tax_period, taxable_value, gst_rate, cgst, sgst,
+                        igst, total_gst, invoice_total, source,
+                        validation_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?)""",
+                (
+                    supplier_id,
+                    row.invoice_number,
+                    row.invoice_date,
+                    row.tax_period,
+                    row.taxable_value,
+                    row.gst_rate,
+                    row.cgst,
+                    row.sgst,
+                    row.igst,
+                    row.total_gst,
+                    row.invoice_total,
+                    result.status,
+                ),
+            )
+            imported += 1
+    return {
+        "imported": imported,
+        "suppliers_created": suppliers_created,
+        "duplicates": duplicates,
+        "rejected": parsed.rejected_rows,
+        "file_name": parsed.file_name,
+        "file_hash": parsed.file_hash,
+    }
+
+
 # --- GSTR-2B staging (Task 4) ---------------------------------------------
 # Ingestion only: these helpers never touch suppliers/invoices.
 
@@ -1137,6 +1250,15 @@ def get_gstr2b_import(import_id: int) -> dict | None:
     with db() as conn:
         row = conn.execute(
             "SELECT * FROM gstr2b_imports WHERE id = ?", (import_id,)
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def get_gstr2b_row(row_id: int) -> dict | None:
+    """Load one staged GSTR-2B row for evidence display."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM gstr2b_rows WHERE id = ?", (row_id,)
         ).fetchone()
     return dict(row) if row is not None else None
 
@@ -2025,6 +2147,32 @@ def get_followup_draft_events(draft_id: int) -> list[dict]:
         ).fetchall()
     return [
         {
+            "Event": row["event_type"],
+            "From": row["from_status"] or "",
+            "To": row["to_status"],
+            "Note": row["note"],
+            "At": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def get_all_followup_draft_events(limit: int = 200) -> list[dict]:
+    """Draft status transitions across all drafts, newest first."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer from 1 to 1000")
+    with db() as conn:
+        rows = conn.execute(
+            """SELECT e.*, d.supplier_name AS supplier_name
+               FROM followup_draft_events e
+               LEFT JOIN followup_drafts d ON d.id = e.draft_id
+               ORDER BY e.id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "Draft": row["draft_id"],
+            "Supplier": row["supplier_name"] or "",
             "Event": row["event_type"],
             "From": row["from_status"] or "",
             "To": row["to_status"],

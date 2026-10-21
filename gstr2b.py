@@ -268,6 +268,29 @@ def _read_xlsx(content: bytes) -> tuple[list[str], list[list[Any]]]:
     return [_cell_text(cell) for cell in rows[0]], rows[1:]
 
 
+def read_tabular_file(
+    content: bytes, file_name: str
+) -> tuple[list[str], list[list[Any]], str]:
+    """Read a CSV/XLSX upload and return headers, data rows and format.
+
+    Shared by the GSTR-2B and purchase-invoice importers so both apply the
+    same safe decoding, blank-row handling and extension checks.
+    """
+    extension = Path(file_name).suffix.lower()
+    if extension == ".csv":
+        headers, data_rows = _read_csv(content)
+        return headers, data_rows, "csv"
+    if extension == ".xlsx":
+        headers, data_rows = _read_xlsx(content)
+        return headers, data_rows, "xlsx"
+    raise ValueError("unsupported file type; expected .csv or .xlsx")
+
+
+def normalize_header(value: Any) -> str:
+    """Normalize a column label for alias matching."""
+    return _normalize_header(value)
+
+
 def _build_column_index(headers: list[str]) -> dict[str, int]:
     index: dict[str, int] = {}
     for position, header in enumerate(headers):
@@ -437,17 +460,7 @@ def parse_gstr2b(content: bytes, file_name: str) -> ParsedGstr2b:
     missing/duplicate required headers, no data rows). Row-level problems
     never abort the batch; they are returned as rejected ParsedRows.
     """
-    extension = Path(file_name).suffix.lower()
-    if extension == ".csv":
-        headers, data_rows = _read_csv(content)
-        source_format = "csv"
-    elif extension == ".xlsx":
-        headers, data_rows = _read_xlsx(content)
-        source_format = "xlsx"
-    else:
-        raise ValueError(
-            "unsupported file type; expected .csv or .xlsx"
-        )
+    headers, data_rows, source_format = read_tabular_file(content, file_name)
 
     column_index = _build_column_index(headers)
     non_blank_rows = [

@@ -317,7 +317,7 @@ class SeedTests(unittest.TestCase):
     def test_seed_is_idempotent_after_record_deletion(self):
         self.db.seed_demo_data()
         with self.db.db() as conn:
-            conn.execute("DELETE FROM suppliers WHERE gstin = '27FAKE1000F1Z5'")
+            conn.execute("DELETE FROM suppliers WHERE gstin = '27AAACS1234A1Z2'")
         # Only supplier 1's three invoices were cascade-deleted.
         self.assertEqual(self._counts(), (2, 3))
         added = self.db.seed_demo_data()  # repopulates what is missing
@@ -328,7 +328,7 @@ class SeedTests(unittest.TestCase):
     def test_seed_rolls_back_all_or_nothing(self):
         # Inject a bad invoice (negative amount) into a copy of the seed
         # list; the whole seed transaction must roll back and raise.
-        bad = ("27FAKE1000F1Z5", "INV-BAD", "2026-05-01", "2026-05",
+        bad = ("27AAACS1234A1Z2", "INV-BAD", "2026-05-01", "2026-05",
                -1, 18, 0, 0, 0, 0, -1, "valid")
         original = self.db.DEMO_INVOICES
         self.db.DEMO_INVOICES = list(original) + [bad]

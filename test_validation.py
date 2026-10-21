@@ -81,13 +81,14 @@ class GstinValidationTests(unittest.TestCase):
         self.assertTrue(check.is_format_valid, check.errors)
         self.assertEqual(check.normalized, GSTIN_INTRA)
 
-    def test_seed_placeholders_are_not_checksum_or_format_valid(self):
+    def test_demo_gstins_are_checksum_valid_and_marked_synthetic(self):
         import db
 
-        for _name, gstin, _phone in db.DEMO_SUPPLIERS:
+        for name, gstin, _phone in db.DEMO_SUPPLIERS:
             with self.subTest(gstin=gstin):
                 check = validation.validate_gstin(gstin)
-                self.assertFalse(check.is_format_valid)
+                self.assertTrue(check.is_format_valid, check.errors)
+                self.assertTrue(name.startswith("(Synthetic)"))
 
     def test_checksum_failure_rejected(self):
         wrong = "0" if GSTIN_INTRA[-1] != "0" else "1"
@@ -403,15 +404,21 @@ class DBValidationIntegrationTests(unittest.TestCase):
         self.assertIn("GSTIN_FORMAT", codes(result))
         self.assertEqual(self._stored_status(invoice_id), "invalid")
 
-    def test_seed_data_is_never_treated_as_valid(self):
+    def test_seed_data_validates_except_intentional_invalid_record(self):
         self.db.seed_demo_data()
         entries = self.db.revalidate_all_invoices()
         self.assertEqual(len(entries), 6)
-        for entry in entries:
-            self.assertEqual(entry["result"].status, validation.STATUS_INVALID)
+        statuses = [entry["result"].status for entry in entries]
+        self.assertEqual(statuses.count(validation.STATUS_VALID), 5)
+        self.assertEqual(statuses.count(validation.STATUS_INVALID), 1)
         summary = self.db.get_validation_summary()
-        self.assertEqual(summary["valid"], 0)
-        self.assertEqual(summary["invalid"], 6)
+        self.assertEqual(summary["valid"], 5)
+        self.assertEqual(summary["invalid"], 1)
+        invalid = [
+            entry for entry in entries
+            if entry["result"].status == validation.STATUS_INVALID
+        ]
+        self.assertEqual(invalid[0]["invoice_number"], "INV-DEMO-201")
 
     def test_update_rejects_unknown_status(self):
         invoice_id = self._add_invoice()
@@ -457,7 +464,8 @@ class DBValidationIntegrationTests(unittest.TestCase):
         self.db.revalidate_all_invoices()
         self.db.init_db()
         summary = self.db.get_validation_summary()
-        self.assertEqual(summary["invalid"], 6)
+        self.assertEqual(summary["valid"], 5)
+        self.assertEqual(summary["invalid"], 1)
         self.assertEqual(summary["pending"], 0)
 
 
@@ -603,8 +611,8 @@ class AppValidationFlowTests(unittest.TestCase):
 
         metrics = {m.label: str(m.value) for m in at.metric}
         self.assertEqual(metrics.get("Invoices"), "6")
-        self.assertEqual(metrics.get("Valid"), "0")
-        self.assertEqual(metrics.get("Invalid"), "6")
+        self.assertEqual(metrics.get("Valid"), "5")
+        self.assertEqual(metrics.get("Invalid"), "1")
         self.assertEqual(metrics.get("Needs review"), "0")
 
         # Validation failures are visible, not swallowed.
@@ -614,7 +622,8 @@ class AppValidationFlowTests(unittest.TestCase):
         import db
 
         summary = db.get_validation_summary()
-        self.assertEqual(summary["invalid"], 6)
+        self.assertEqual(summary["valid"], 5)
+        self.assertEqual(summary["invalid"], 1)
         self.assertEqual(summary["pending"], 0)
 
 

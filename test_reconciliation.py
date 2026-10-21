@@ -618,6 +618,8 @@ class PersistenceTests(DatabaseTestCase):
         )
         at.run()
         self.assertEqual(at.exception, [])
+        at.switch_page("pages/4_reconciliation.py").run()
+        self.assertEqual(at.exception, [])
         at.button(key="reconcile").click().run()
         self.assertEqual(at.exception, [])
         self.assertTrue(

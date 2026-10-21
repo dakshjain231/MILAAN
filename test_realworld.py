@@ -203,6 +203,8 @@ class StreamlitFreshnessTests(DatabaseTestCase):
         )
         at.run()
         self.assertEqual(at.exception, [])
+        at.switch_page("pages/3_gstr2b_import.py").run()
+        self.assertEqual(at.exception, [])
 
         content = (FIXTURES / "valid_normalized.csv").read_bytes()
         uploader = next(iter(at.file_uploader))
@@ -218,6 +220,8 @@ class StreamlitFreshnessTests(DatabaseTestCase):
             [item.value for item in at.success],
         )
 
+        at.switch_page("pages/4_reconciliation.py").run()
+        self.assertEqual(at.exception, [])
         at.button(key="reconcile").click().run()
         self.assertEqual(at.exception, [])
         runs = db.get_reconciliation_runs()

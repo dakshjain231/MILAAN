@@ -683,6 +683,8 @@ class UITests(DatabaseTestCase):
         )
         at.run()
         self.assertEqual(at.exception, [])
+        at.switch_page("pages/6_followups.py").run()
+        self.assertEqual(at.exception, [])
         at.button(key="generate_followups").click().run()
         self.assertEqual(at.exception, [])
         self.assertTrue(
