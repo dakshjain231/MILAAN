@@ -14,10 +14,14 @@ Safety model:
   retried automatically.
 - Only definitive rate-limit (HTTP 429) and server (HTTP 5xx) responses are
   retryable, and only through a bounded manual retry action.
-- ``DELIVERED``/``READ`` cannot be produced here. Webhooks are explicitly
-  deferred until signature verification can be implemented and tested.
-- Access tokens, raw responses and unnecessary personal data are never
-  stored or logged. Error text is redacted and length-limited.
+- ``DELIVERED``/``READ``/``FAILED`` transitions come only from a verified Meta
+  webhook (``webhook.py``), never from the HTTP send response. SENT means Meta
+  accepted the request; it is not a delivery guarantee.
+- Access tokens, app secrets, raw responses and unnecessary personal data are
+  never stored or logged. Error text is redacted and length-limited.
+- The webhook receiver verifies ``X-Hub-Signature-256`` with the app secret
+  over the raw request body and is idempotent, so Meta retries never apply a
+  status twice.
 
 No message is ever sent by importing this module or loading the UI.
 """
@@ -25,6 +29,7 @@ No message is ever sent by importing this module or loading the UI.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -77,6 +82,11 @@ class WhatsAppConfig:
     api_version: str | None = None
     max_attempts: int = DEFAULT_MAX_ATTEMPTS
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+    webhook_enabled: bool = False
+    verify_token: str | None = None
+    app_secret: str | None = None
+    webhook_port: int = 8443
+    webhook_bind: str = "127.0.0.1"
     issues: tuple[str, ...] = field(default_factory=tuple)
 
     def problems(self) -> list[str]:
@@ -109,17 +119,47 @@ class WhatsAppConfig:
     def ready(self) -> bool:
         return not self.problems()
 
+    def webhook_problems(self) -> list[str]:
+        problems: list[str] = []
+        if not self.webhook_enabled:
+            problems.append("WHATSAPP_WEBHOOK_ENABLED is not true")
+            return problems
+        if not self.app_secret or not self.app_secret.strip():
+            problems.append("WHATSAPP_APP_SECRET is missing")
+        if not self.verify_token or not self.verify_token.strip():
+            problems.append("WHATSAPP_VERIFY_TOKEN is missing")
+        if not 0 < self.webhook_port <= 65535:
+            problems.append("WHATSAPP_WEBHOOK_PORT must be a valid port")
+        if not self.webhook_bind.strip():
+            problems.append("WHATSAPP_WEBHOOK_BIND must not be empty")
+        return problems
+
+    @property
+    def webhook_ready(self) -> bool:
+        return not self.webhook_problems()
+
     def safe_summary(self) -> dict:
         phone = (self.phone_number_id or "").strip()
         return {
             "enabled": self.enabled,
             "ready": self.ready,
+            "webhook_enabled": self.webhook_enabled,
+            "webhook_ready": self.webhook_ready,
+            "webhook_port": self.webhook_port,
+            "webhook_bind": self.webhook_bind,
             "api_version": (self.api_version or "").strip() or None,
             "phone_number_id_masked": (
                 "…" + phone[-4:] if len(phone) >= 4 else None
             ),
+            "verify_token_configured": bool(
+                self.verify_token and self.verify_token.strip()
+            ),
+            "app_secret_configured": bool(
+                self.app_secret and self.app_secret.strip()
+            ),
             "max_attempts": self.max_attempts,
             "problems": self.problems(),
+            "webhook_problems": self.webhook_problems(),
         }
 
 
@@ -148,6 +188,26 @@ def load_whatsapp_config(
         except ValueError:
             issues.append("WHATSAPP_MAX_ATTEMPTS must be an integer")
 
+    raw_webhook_enabled = (
+        env.get("WHATSAPP_WEBHOOK_ENABLED") or ""
+    ).strip().lower()
+    if raw_webhook_enabled in _TRUE_VALUES:
+        webhook_enabled = True
+    elif raw_webhook_enabled in _FALSE_VALUES:
+        webhook_enabled = False
+    else:
+        webhook_enabled = False
+        if raw_webhook_enabled:
+            issues.append("WHATSAPP_WEBHOOK_ENABLED must be true or false")
+
+    webhook_port = 8443
+    raw_port = (env.get("WHATSAPP_WEBHOOK_PORT") or "").strip()
+    if raw_port:
+        try:
+            webhook_port = int(raw_port)
+        except ValueError:
+            issues.append("WHATSAPP_WEBHOOK_PORT must be an integer")
+
     config = WhatsAppConfig(
         enabled=enabled,
         access_token=(env.get("WHATSAPP_ACCESS_TOKEN") or "").strip() or None,
@@ -158,6 +218,16 @@ def load_whatsapp_config(
             env.get("WHATSAPP_API_VERSION") or ""
         ).strip() or None,
         max_attempts=max_attempts,
+        webhook_enabled=webhook_enabled,
+        verify_token=(
+            env.get("WHATSAPP_VERIFY_TOKEN") or ""
+        ).strip() or None,
+        app_secret=(
+            env.get("WHATSAPP_APP_SECRET") or ""
+        ).strip() or None,
+        webhook_port=webhook_port,
+        webhook_bind=(env.get("WHATSAPP_WEBHOOK_BIND") or "127.0.0.1").strip()
+        or "127.0.0.1",
         issues=tuple(issues),
     )
     return config
@@ -192,6 +262,8 @@ class DeliveryProvider(Protocol):
         message_body: str,
         *,
         idempotency_key: str | None = None,
+        template_name: str | None = None,
+        template_language: str | None = None,
     ) -> ProviderResponse: ...
 
 
@@ -327,6 +399,8 @@ class WhatsAppCloudApiProvider:
         message_body: str,
         *,
         idempotency_key: str | None = None,
+        template_name: str | None = None,
+        template_language: str | None = None,
     ) -> ProviderResponse:
         if not self.is_ready:
             return self._failure(
@@ -348,13 +422,33 @@ class WhatsAppCloudApiProvider:
                 "Message body is empty.",
             )
 
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": recipient,
-            "type": "text",
-            "text": {"preview_url": False, "body": message_body},
-        }
+        template = (template_name or "").strip()
+        language = (template_language or "").strip() or "en"
+        if template:
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": recipient,
+                "type": "template",
+                "template": {
+                    "name": template[:128],
+                    "language": {"code": language[:32]},
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [{"type": "text", "text": message_body}],
+                        }
+                    ],
+                },
+            }
+        else:
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": recipient,
+                "type": "text",
+                "text": {"preview_url": False, "body": message_body},
+            }
         headers = {
             "Authorization": f"Bearer {self.config.access_token}",
             "Content-Type": "application/json",
@@ -474,6 +568,8 @@ class MockDeliveryProvider:
         message_body: str,
         *,
         idempotency_key: str | None = None,
+        template_name: str | None = None,
+        template_language: str | None = None,
     ) -> ProviderResponse:
         recipient = normalize_recipient_phone(recipient_phone)
         if recipient is None:
@@ -546,11 +642,17 @@ def _dispatch_claimed(
     delivery = db.get_message_delivery(delivery_id)
     if delivery is None:
         raise DeliveryBlockedError(f"delivery {delivery_id} not found")
+    template_name = (delivery.get("template_name") or "").strip() or None
+    template_language = (
+        delivery.get("template_language") or ""
+    ).strip() or None
     try:
         response = provider.send(
             delivery["recipient_phone_snapshot"],
             delivery["message_body_snapshot"],
             idempotency_key=delivery["idempotency_key"],
+            template_name=template_name,
+            template_language=template_language,
         )
     except Exception as exc:
         response = ProviderResponse(
@@ -649,6 +751,9 @@ def deliver_approved_draft(
     provider: DeliveryProvider,
     *,
     now: datetime | None = None,
+    opt_in_confirmed: bool = False,
+    template_name: str | None = None,
+    template_language: str | None = None,
 ) -> dict:
     """Create (once) and dispatch a delivery for an approved draft.
 
@@ -661,6 +766,12 @@ def deliver_approved_draft(
         raise DeliveryBlockedError(
             "Delivery blocked: " + ", ".join(eligibility["problems"])
             + ". No message was sent."
+        )
+    if provider.name == PROVIDER_WHATSAPP and not opt_in_confirmed:
+        raise DeliveryBlockedError(
+            "Delivery blocked: recipient opt-in was not confirmed. WhatsApp "
+            "requires users to opt in before receiving business messages; "
+            "no message was sent."
         )
     draft = eligibility["draft"]
     key = compute_idempotency_key(
@@ -678,6 +789,9 @@ def deliver_approved_draft(
                 provider=provider.name,
                 idempotency_key=key,
                 max_attempts=provider.max_attempts,
+                opt_in_confirmed=opt_in_confirmed,
+                template_name=template_name,
+                template_language=template_language,
             )
         except ValueError as exc:
             raise DeliveryBlockedError(str(exc)) from exc
@@ -773,12 +887,228 @@ def resolve_unknown(
     )
 
 
+SIGNATURE_HEADER = "x-hub-signature-256"
+
+
+def verify_webhook_signature(
+    body: bytes,
+    signature_header: str | None,
+    app_secret: str | None,
+) -> bool:
+    """Verify Meta's ``X-Hub-Signature-256`` over the raw request body.
+
+    Uses ``hmac.compare_digest`` to avoid timing leaks. Returns False for
+    any missing/malformed header or secret, never raising.
+    """
+    if not app_secret or not signature_header:
+        return False
+    expected = "sha256=" + hmac.new(
+        app_secret.encode("utf-8"), body, hashlib.sha256
+    ).hexdigest()
+    try:
+        return hmac.compare_digest(expected, signature_header.strip())
+    except (TypeError, ValueError):
+        return False
+
+
+def verify_webhook_challenge(
+    params: Mapping[str, str],
+    expected_token: str | None,
+) -> tuple[bool, str]:
+    """Validate Meta's webhook verification handshake.
+
+    Returns (accepted, challenge_or_reason). The challenge string is echoed
+    back only when mode=subscribe and the hub.verify_token matches.
+    """
+    mode = (params.get("hub.mode") or "").strip().lower()
+    token = params.get("hub.verify_token") or ""
+    challenge = params.get("hub.challenge") or ""
+    if mode != "subscribe":
+        return False, "unsupported hub.mode"
+    if not expected_token or not token:
+        return False, "missing verify token"
+    if hmac.compare_digest(expected_token.encode("utf-8"), token.encode("utf-8")):
+        return True, challenge
+    return False, "verify token mismatch"
+
+
+def _extract_webhook_events(payload: Mapping[str, Any]) -> dict:
+    """Walk a verified Meta webhook payload into statuses and messages."""
+    statuses: list[dict] = []
+    messages: list[dict] = []
+    for entry in payload.get("entry") or []:
+        for change in entry.get("changes") or []:
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+            for status in value.get("statuses") or []:
+                if not isinstance(status, dict):
+                    continue
+                statuses.append(
+                    {
+                        "id": str(status.get("id") or "").strip()[:200],
+                        "status": str(status.get("status") or "").strip().lower(),
+                        "recipient_id": str(
+                            status.get("recipient_id") or ""
+                        ).strip()[:32],
+                        "timestamp": str(
+                            status.get("timestamp") or ""
+                        ).strip()[:64],
+                        "errors": status.get("errors")
+                        if isinstance(status.get("errors"), list)
+                        else [],
+                    }
+                )
+            for message in value.get("messages") or []:
+                if not isinstance(message, dict):
+                    continue
+                from_phone = str(message.get("from") or "").strip()[:32]
+                msg_id = str(message.get("id") or "").strip()[:200]
+                msg_type = str(message.get("type") or "").strip().lower()
+                text_value = None
+                if isinstance(message.get("text"), dict):
+                    text_value = message["text"].get("body")
+                elif isinstance(message.get("image"), dict):
+                    text_value = None
+                if not msg_id:
+                    continue
+                messages.append(
+                    {
+                        "id": msg_id,
+                        "from": from_phone,
+                        "type": msg_type,
+                        "text": str(text_value or "").strip()[:4096] or None,
+                        "timestamp": str(
+                            message.get("timestamp") or ""
+                        ).strip()[:64],
+                    }
+                )
+    return {"statuses": statuses, "messages": messages}
+
+
+def process_webhook_payload(
+    payload: Mapping[str, Any],
+    *,
+    config: WhatsAppConfig,
+    now: datetime | None = None,
+) -> dict:
+    """Apply verified webhook events to the database, idempotently.
+
+    Callers must have already verified the request signature. Returns a
+    summary of what was recorded. No message is ever sent here.
+    """
+    events = _extract_webhook_events(payload)
+    summary = {
+        "statuses_seen": len(events["statuses"]),
+        "messages_seen": len(events["messages"]),
+        "statuses_applied": 0,
+        "replies_recorded": 0,
+        "errors": [],
+    }
+    moment = now or datetime.now(timezone.utc)
+    for status in events["statuses"]:
+        if not status["id"] or status["status"] not in (
+            "sent", "delivered", "read", "failed"
+        ):
+            summary["errors"].append(
+                f"ignored status event id={status['id'] or '-'} "
+                f"status={status['status'] or 'unknown'}"
+            )
+            continue
+        delivery = db.get_message_delivery_by_provider_message_id(
+            status["id"]
+        )
+        try:
+            result = db.apply_webhook_status_update(
+                delivery["id"] if delivery is not None else None,
+                status["id"],
+                status["status"],
+                wa_id=status["recipient_id"],
+                status_detail=(
+                    " ".join(
+                        str(error.get("message", ""))
+                        for error in status["errors"]
+                        if isinstance(error, dict) and error.get("message")
+                    )[:300]
+                    or None
+                ),
+                provider_timestamp=status["timestamp"],
+                errors=status["errors"],
+                now_text=_format_utc(moment),
+            )
+        except Exception as exc:  # never leak event internals
+            summary["errors"].append(f"status event failed: {type(exc).__name__}")
+            continue
+        if result["applied"]:
+            summary["statuses_applied"] += 1
+        subject_id = delivery["id"] if delivery is not None else None
+        db.record_system_audit_event(
+            actor="webhook",
+            event_type="message_status_received",
+            subject_type="message_status",
+            subject_id=subject_id if subject_id is not None else "orphan",
+            details={
+                "provider_message_id": status["id"],
+                "event_type": status["status"],
+                "delivery_id": subject_id,
+                "wa_id": status["recipient_id"] or None,
+                "provider_timestamp": status["timestamp"] or None,
+            },
+        )
+    for message in events["messages"]:
+        reply_type = "text"
+        if message["type"] not in ("text", "reaction", "image"):
+            reply_type = "unknown"
+        else:
+            reply_type = message["type"]
+        if reply_type == "image":
+            reply_type = "image"
+        try:
+            recorded = db.record_incoming_reply(
+                message["from"],
+                message["id"],
+                reply_text=message["text"],
+                reply_type=reply_type,
+                provider_timestamp=message["timestamp"],
+            )
+        except Exception as exc:
+            summary["errors"].append(
+                f"reply event failed: {type(exc).__name__}"
+            )
+            continue
+        if recorded["created"]:
+            summary["replies_recorded"] += 1
+        db.record_system_audit_event(
+            actor="webhook",
+            event_type="message_reply_received",
+            subject_type="message_reply",
+            subject_id=message["id"],
+            details={
+                "provider_message_id": message["id"],
+                "from": message["from"] or None,
+                "reply_type": reply_type,
+                "has_text": bool(message["text"]),
+                "provider_timestamp": message["timestamp"] or None,
+            },
+        )
+    return summary
+
+
 def webhook_support() -> dict:
-    """Webhook delivery/read status updates are intentionally deferred."""
+    """Describe the authenticated webhook receiver shipped with MILAAN."""
     return {
-        "supported": False,
-        "reason": (
-            "No authenticated webhook receiver is deployed. SENT means Meta "
-            "accepted the request; DELIVERED/READ are not available."
+        "supported": True,
+        "receiver": "webhook.py",
+        "path": "/webhook/whatsapp",
+        "signature_header": SIGNATURE_HEADER,
+        "handled": (
+            "delivery status updates (sent/delivered/read/failed) and "
+            "inbound recipient replies"
+        ),
+        "requirements": (
+            "Run webhook.py behind HTTPS with WHATSAPP_APP_SECRET and "
+            "WHATSAPP_VERIFY_TOKEN set; configure the callback URL in the "
+            "Meta app dashboard with the same verify token. DELIVERED/READ "
+            "are only ever produced by this verified webhook."
         ),
     }

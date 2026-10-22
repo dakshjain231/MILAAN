@@ -1334,7 +1334,15 @@ def _render_sidebar(ready: bool, actor: str) -> None:
         with st.expander("Workspace status"):
             st.caption(status_text)
             st.caption(f"Database: {database_path}")
-            st.caption("Live WhatsApp delivery: off")
+            try:
+                wa_ready = delivery.load_whatsapp_config().ready
+            except Exception:
+                wa_ready = False
+            st.caption(
+                "Live WhatsApp delivery: "
+                + ("configured (sends still need approval)" if wa_ready
+                   else "off")
+            )
             try:
                 audit_events = db.get_system_audit_events(limit=8)
             except Exception as exc:
@@ -2780,10 +2788,48 @@ def _render_later_statement(actor: str) -> None:
 
 def _render_delivery(actor: str) -> None:
     st.caption(
-        "Inspect delivery evidence or run a simulated send. Live WhatsApp "
-        "delivery is disabled and approval alone sends nothing."
+        "Inspect delivery evidence, run a simulated send, or send a real "
+        "WhatsApp Cloud API message with explicit opt-in and send approval. "
+        "Nothing is ever sent automatically; approval alone sends nothing."
     )
     _flash("delivery_flash")
+    config = delivery.load_whatsapp_config()
+    summary = config.safe_summary()
+    st.markdown("**WhatsApp configuration**")
+    status_cols = st.columns(3)
+    with status_cols[0]:
+        ready_text = "configured and ready" if summary["ready"] else "not configured"
+        st.caption(f"Real delivery: **{ready_text}**")
+    with status_cols[1]:
+        st.caption(f"Webhook receiver: **{'ready' if summary['webhook_ready'] else 'not ready'}**")
+    with status_cols[2]:
+        st.caption(f"Webhook: **{'enabled' if summary['webhook_enabled'] else 'disabled'}**")
+    if summary["ready"]:
+        st.success(
+            "WhatsApp Cloud API is configured. Sending is still explicit: "
+            "you must select an approved draft, review it, confirm opt-in, "
+            "and press the real-send button."
+        )
+    else:
+        st.warning(
+            "WhatsApp Cloud API is not configured for real sends. "
+            "Set WHATSAPP_ENABLED=true plus the access token, phone number "
+            "ID and API version in the environment, then restart. Missing: "
+            + (", ".join(summary["problems"]) if summary["problems"] else "none")
+        )
+    if not summary["webhook_ready"]:
+        st.info(
+            "Webhook status updates need WHATSAPP_WEBHOOK_ENABLED=true, "
+            "WHATSAPP_APP_SECRET and WHATSAPP_VERIFY_TOKEN, plus webhook.py "
+            "running. Until then, SENT is the only reachable state and "
+            "DELIVERED/READ/FAILED are not recorded."
+        )
+    else:
+        st.info(
+            "Verified webhook receiver available. Run webhook.py behind "
+            "HTTPS and subscribe the callback URL in the Meta dashboard "
+            "with the same verify token."
+        )
     mode = st.radio(
         "Delivery mode",
         options=["Simulated (mock)", "WhatsApp Cloud API (real)"],
@@ -2792,14 +2838,20 @@ def _render_delivery(actor: str) -> None:
         key="delivery_mode",
         help=(
             "Simulated mode creates a clearly labelled mock delivery record "
-            "and never uses the network. Live mode is disabled in this build."
+            "and never uses the network. Real mode uses the Cloud API only "
+            "when configured and only after explicit opt-in + send approval."
         ),
     )
     real_mode = mode.startswith("WhatsApp")
-    if real_mode:
+    if real_mode and not config.ready:
         st.warning(
-            "Real delivery is disabled in this build. Environment settings "
-            "cannot enable outbound WhatsApp requests. Nothing was sent."
+            "Real delivery is not configured. Nothing can be sent until "
+            "WHATSAPP_ENABLED=true and the credentials are set."
+        )
+    elif real_mode:
+        st.info(
+            "Real mode is active. You will confirm the recipient opted in "
+            "and explicitly approve the send before anything is sent."
         )
     else:
         st.info(
@@ -2827,7 +2879,7 @@ def _render_delivery(actor: str) -> None:
             for row in approved_drafts
         }
         approved_label = st.selectbox(
-            "Approved draft to preview or simulate",
+            "Approved draft to preview or send",
             options=list(approved_labels),
             key="delivery_draft",
         )
@@ -2872,11 +2924,7 @@ def _render_delivery(actor: str) -> None:
                     "MILAAN keeps one delivery record per approved snapshot "
                     "and does not create a duplicate send."
                 )
-            elif real_mode:
-                st.warning(
-                    "Real delivery is disabled in this build. Nothing was sent."
-                )
-            else:
+            elif not real_mode:
                 send_provider = delivery.MockDeliveryProvider()
                 confirmed_send = st.checkbox(
                     "I confirm the recipient consented and want to create "
@@ -2891,7 +2939,8 @@ def _render_delivery(actor: str) -> None:
                 ):
                     try:
                         record = delivery.deliver_approved_draft(
-                            delivery_draft_id, send_provider
+                            delivery_draft_id, send_provider,
+                            opt_in_confirmed=True,
                         )
                     except (
                         delivery.DeliveryBlockedError,
@@ -2910,6 +2959,78 @@ def _render_delivery(actor: str) -> None:
                             "was sent (mock).",
                         )
                         st.rerun()
+            else:
+                st.markdown("**Review before real send**")
+                st.caption(
+                    "Free-form text is only permitted inside WhatsApp's "
+                    "24-hour customer-service window. Outside that window "
+                    "an approved template is required; MILAAN does not "
+                    "verify template approval."
+                )
+                use_template = st.checkbox(
+                    "Send an approved template instead of free-form text",
+                    key=f"delivery_template_{delivery_draft_id}",
+                )
+                template_name = ""
+                template_language = "en"
+                if use_template:
+                    template_name = st.text_input(
+                        "Template name (must exist and be approved in Meta)",
+                        key=f"delivery_template_name_{delivery_draft_id}",
+                        placeholder="e.g. supplier_follow_up",
+                    )
+                    template_language = st.text_input(
+                        "Template language code",
+                        value="en",
+                        key=f"delivery_template_lang_{delivery_draft_id}",
+                    )
+                opt_in = st.checkbox(
+                    "I confirm this recipient opted in to receive WhatsApp "
+                    "messages from us.",
+                    key=f"delivery_optin_{delivery_draft_id}",
+                )
+                confirmed_send = st.checkbox(
+                    "I explicitly approve sending this message now via the "
+                    "WhatsApp Cloud API.",
+                    key=f"delivery_approve_send_{delivery_draft_id}",
+                )
+                send_ready = opt_in and confirmed_send
+                if not send_ready:
+                    st.caption(
+                        "Both opt-in and explicit send approval are required."
+                    )
+                if st.button(
+                    "Send via WhatsApp Cloud API",
+                    key=f"delivery_real_send_{delivery_draft_id}",
+                    disabled=not send_ready,
+                    type="primary",
+                ):
+                    provider = delivery.WhatsAppCloudApiProvider(config)
+                    try:
+                        record = delivery.deliver_approved_draft(
+                            delivery_draft_id, provider,
+                            opt_in_confirmed=True,
+                            template_name=template_name or None,
+                            template_language=template_language or None,
+                        )
+                    except (
+                        delivery.DeliveryBlockedError,
+                        delivery.DeliveryConfigurationError,
+                    ) as exc:
+                        st.warning(str(exc))
+                    except Exception as exc:
+                        st.error(f"Delivery attempt failed: {exc}")
+                    else:
+                        st.session_state["delivery_flash"] = (
+                            "success" if record["status"] == "SENT"
+                            else "warning",
+                            f"Delivery #{record['id']} recorded status "
+                            f"{record['status']} (provider message ID: "
+                            f"{record['provider_message_id'] or 'none'}). "
+                            "SENT means Meta accepted the request; it is not "
+                            "a delivery guarantee.",
+                        )
+                        st.rerun()
 
     st.markdown("**Delivery history**")
     if all_deliveries:
@@ -2923,6 +3044,7 @@ def _render_delivery(actor: str) -> None:
                 "Provider": row["provider"],
                 "Status": row["status"],
                 "Attempts": f"{row['attempt_count']}/{row['max_attempts']}",
+                "Opt-in": "yes" if row.get("opt_in_confirmed") else "no",
                 "Provider message ID": row["provider_message_id"] or "",
                 "Next attempt": row["next_attempt_at"] or "",
                 "Updated": row["updated_at"],
@@ -2937,12 +3059,53 @@ def _render_delivery(actor: str) -> None:
             hide_index=True)
     else:
         st.caption("No delivery attempts recorded yet.")
+
+    try:
+        status_events = db.get_message_status_events(limit=100)
+        replies = db.get_incoming_replies(limit=100)
+    except Exception as exc:
+        st.error(f"Could not load webhook evidence: {exc}")
+    else:
+        st.markdown("**Webhook status events**")
+        if status_events:
+            st.dataframe([
+                {
+                    "Message ID": row["provider_message_id"],
+                    "Event": row["event_type"],
+                    "Delivery": row["delivery_id"] or "",
+                    "Recipient WA ID": row["wa_id"] or "",
+                    "Detail": row["status_detail"] or "",
+                    "Received": row["received_at"],
+                }
+                for row in status_events
+            ], alt="Delivery status updates received from the Meta webhook",
+                hide_index=True)
+        else:
+            st.caption(
+                "No webhook status events yet. Run webhook.py and subscribe "
+                "the callback URL in the Meta dashboard to receive "
+                "DELIVERED/READ/FAILED updates."
+            )
+        st.markdown("**Inbound replies**")
+        if replies:
+            st.dataframe([
+                {
+                    "Message ID": row["provider_message_id"],
+                    "From": row["from_phone"],
+                    "Type": row["reply_type"],
+                    "Text": row["reply_text"] or "",
+                    "Received": row["received_at"],
+                }
+                for row in replies
+            ], alt="Inbound replies received from the Meta webhook",
+                hide_index=True)
+        else:
+            st.caption("No inbound replies recorded yet.")
     st.caption(
-        "Webhook status updates are deferred: DELIVERED/READ require an "
-        "authenticated Meta webhook, which this build does not implement."
+        "SENT means Meta accepted the send request. DELIVERED/READ/FAILED "
+        "are recorded only from the verified Meta webhook (webhook.py). "
+        "A phone number on file does not prove consent or opt-in."
     )
-
-
 def page_suppliers() -> None:
     _page_shell(
         "Suppliers",
@@ -3062,8 +3225,9 @@ def page_audit_log() -> None:
 def page_settings() -> None:
     _page_shell(
         "Settings",
-        "Workspace limits, demo controls, and delivery safety. No setting "
-        "can enable live WhatsApp delivery in this build.",
+        "Workspace limits, demo controls, and delivery safety. Real WhatsApp "
+        "delivery is enabled only through environment configuration and an "
+        "explicit opt-in + approval send.",
         "Administration",
     )
     _flash("settings_flash")
@@ -3106,15 +3270,44 @@ def page_settings() -> None:
                     st.rerun()
     with right:
         with st.container(border=True):
-            st.subheader("Delivery")
-            st.caption(
-                "Live WhatsApp delivery is disabled. Approval records human "
-                "review and never sends a message. Simulated delivery is "
-                "available for workflow testing and makes no network request."
-            )
-            st.caption(
-                "A phone number on file does not prove consent or ownership."
-            )
+            st.subheader("WhatsApp delivery")
+            try:
+                wa_config = delivery.load_whatsapp_config()
+                wa_summary = wa_config.safe_summary()
+            except Exception as exc:
+                st.error(f"Could not load WhatsApp configuration: {exc}")
+            else:
+                st.caption(
+                    "Real delivery: "
+                    + ("configured and ready" if wa_summary["ready"]
+                       else "not configured")
+                )
+                st.caption(
+                    "Webhook receiver: "
+                    + ("ready" if wa_summary["webhook_ready"]
+                       else "not ready")
+                    + " · enabled: "
+                    + ("yes" if wa_summary["webhook_enabled"] else "no")
+                )
+                st.caption(
+                    "Phone number ID: "
+                    + (wa_summary["phone_number_id_masked"] or "not set")
+                )
+                if wa_summary["problems"]:
+                    st.caption(
+                        "Missing/invalid: " + ", ".join(wa_summary["problems"])
+                    )
+                st.caption(
+                    "Credentials are never displayed. Approval records human "
+                    "review and never sends a message on its own; a real send "
+                    "also requires confirmed opt-in."
+                )
+                st.caption(
+                    "A phone number on file does not prove consent or "
+                    "ownership. Free-form messages are only valid inside "
+                    "WhatsApp's 24-hour window; outside it an approved "
+                    "template is required."
+                )
         with st.container(border=True):
             st.subheader("Validation")
             st.caption(

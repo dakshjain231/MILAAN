@@ -440,6 +440,11 @@ CREATE TABLE IF NOT EXISTS message_deliveries (
     delivered_at TEXT,
     read_at TEXT,
     failed_at TEXT,
+    opt_in_confirmed INTEGER NOT NULL DEFAULT 0
+        CHECK (opt_in_confirmed IN (0, 1)),
+    template_name TEXT,
+    template_language TEXT,
+    webhook_sync_at TEXT,
     resolved_at TEXT,
     resolved_by TEXT,
     resolution_note TEXT,
@@ -463,8 +468,50 @@ CREATE INDEX IF NOT EXISTS idx_message_deliveries_provider
     ON message_deliveries(provider);
 CREATE INDEX IF NOT EXISTS idx_message_deliveries_next_attempt
     ON message_deliveries(next_attempt_at);
-CREATE INDEX IF NOT EXISTS idx_message_deliveries_provider_message_id
+CREATE INDEX IF NOT EXISTS idx_message_deliveries_provider_msg_id
     ON message_deliveries(provider_message_id);
+"""
+
+WEBHOOK_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS message_status_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_message_id TEXT NOT NULL,
+    delivery_id INTEGER,
+    event_type TEXT NOT NULL
+        CHECK (event_type IN ('sent', 'delivered', 'read', 'failed')),
+    wa_id TEXT,
+    status_detail TEXT,
+    provider_timestamp TEXT,
+    errors_json TEXT NOT NULL DEFAULT '[]',
+    received_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (provider_message_id, event_type),
+    CHECK (length(provider_message_id) <= 200),
+    CHECK (length(wa_id) <= 100),
+    CHECK (length(status_detail) <= 300),
+    CHECK (length(provider_timestamp) <= 64)
+);
+CREATE TABLE IF NOT EXISTS message_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_message_id TEXT NOT NULL,
+    from_phone TEXT NOT NULL,
+    reply_type TEXT NOT NULL DEFAULT 'text'
+        CHECK (reply_type IN ('text', 'reaction', 'image', 'unknown')),
+    reply_text TEXT,
+    provider_timestamp TEXT,
+    delivery_id INTEGER,
+    received_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (provider_message_id),
+    CHECK (length(provider_message_id) <= 200),
+    CHECK (length(from_phone) <= 32),
+    CHECK (length(reply_text) <= 4096),
+    CHECK (length(provider_timestamp) <= 64)
+);
+CREATE INDEX IF NOT EXISTS idx_message_status_events_provider_id
+    ON message_status_events(provider_message_id);
+CREATE INDEX IF NOT EXISTS idx_message_status_events_delivery_id
+    ON message_status_events(delivery_id);
+CREATE INDEX IF NOT EXISTS idx_message_replies_from_phone
+    ON message_replies(from_phone);
 """
 
 SCHEMA = (
@@ -481,6 +528,7 @@ SCHEMA = (
     + FOLLOWUP_EVENTS_DDL
     + FOLLOWUP_VERIFICATIONS_DDL
     + MESSAGE_DELIVERIES_DDL
+    + WEBHOOK_TABLES_DDL
     + INDEX_DDL
     + GSTR2B_INDEX_DDL
     + RECONCILIATION_INDEX_DDL
@@ -638,6 +686,38 @@ def _migrate_followup_approval_snapshots(conn: sqlite3.Connection) -> None:
         raise
 
 
+def _migrate_message_delivery_webhook_columns(conn: sqlite3.Connection) -> None:
+    """Additive columns for webhook sync and opt-in evidence.
+
+    Safe on existing Task 7 databases: ALTER TABLE only, no rebuild. Missing
+    columns default to their documented values (opt-in not confirmed).
+    """
+    columns = _table_columns(conn, "message_deliveries")
+    additions = (
+        ("opt_in_confirmed", "INTEGER NOT NULL DEFAULT 0"),
+        ("template_name", "TEXT"),
+        ("template_language", "TEXT"),
+        ("webhook_sync_at", "TEXT"),
+    )
+    missing = [
+        (name, declaration)
+        for name, declaration in additions
+        if name not in columns
+    ]
+    if not missing:
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for name, declaration in missing:
+            conn.execute(
+                f"ALTER TABLE message_deliveries ADD COLUMN {name} {declaration}"
+            )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
 def init_db() -> None:
     """Create the schema if missing. Safe to call repeatedly; never drops
     or resets records. Migrates a Task 1 legacy suppliers table and the
@@ -654,6 +734,7 @@ def init_db() -> None:
             _migrate_legacy_suppliers_table(conn)
         conn.executescript(SCHEMA)
         _migrate_followup_approval_snapshots(conn)
+        _migrate_message_delivery_webhook_columns(conn)
         if _needs_validation_status_migration(conn):
             _migrate_validation_status_check(conn)
             # Rebuilding drops the old table's indexes with it.
@@ -2598,6 +2679,9 @@ def create_message_delivery(
     provider: str,
     idempotency_key: str,
     max_attempts: int = 3,
+    opt_in_confirmed: bool = False,
+    template_name: str | None = None,
+    template_language: str | None = None,
 ) -> dict:
     """Create a QUEUED delivery with frozen recipient/body snapshots.
 
@@ -2648,8 +2732,9 @@ def create_message_delivery(
                     """INSERT INTO message_deliveries
                            (followup_draft_id, idempotency_key,
                             recipient_phone_snapshot, message_body_snapshot,
-                            provider, status, attempt_count, max_attempts)
-                       VALUES (?, ?, ?, ?, ?, 'QUEUED', 0, ?)
+                            provider, status, attempt_count, max_attempts,
+                            opt_in_confirmed, template_name, template_language)
+                       VALUES (?, ?, ?, ?, ?, 'QUEUED', 0, ?, ?, ?, ?)
                        ON CONFLICT(idempotency_key) DO NOTHING""",
                     (
                         draft_id,
@@ -2658,6 +2743,9 @@ def create_message_delivery(
                         body,
                         provider,
                         max_attempts,
+                        1 if opt_in_confirmed else 0,
+                        (template_name or "").strip()[:120] or None,
+                        (template_language or "").strip()[:32] or None,
                     ),
                 )
                 created = cursor.rowcount == 1
@@ -2876,3 +2964,212 @@ def resolve_unknown_delivery(
                 )
     finally:
         conn.close()
+
+
+def get_message_delivery_by_provider_message_id(
+    provider_message_id: str,
+) -> dict | None:
+    """Find a delivery record by the provider message ID (WAMID)."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM message_deliveries WHERE provider_message_id = ?",
+            (provider_message_id,),
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def apply_webhook_status_update(
+    delivery_id: int | None,
+    provider_message_id: str,
+    event_type: str,
+    *,
+    wa_id: str | None = None,
+    status_detail: str | None = None,
+    provider_timestamp: str | None = None,
+    errors: list | None = None,
+    now_text: str | None = None,
+) -> dict:
+    """Idempotently record a status event and apply it to a delivery.
+
+    Returns {"applied": True/False, "delivery": row or None}. A second call
+    with the same provider message ID and event type is a no-op (duplicate
+    webhook retry handling), so the same status is never applied twice.
+    """
+    now = now_text or _utc_now_text()
+    clean_provider_id = (provider_message_id or "").strip()[:200]
+    clean_wa_id = (wa_id or "").strip()[:100] or None
+    clean_detail = (status_detail or "").strip()[:300] or None
+    clean_ts = (provider_timestamp or "").strip()[:64] or None
+    if event_type not in ("sent", "delivered", "read", "failed"):
+        raise ValueError(f"unsupported event_type {event_type!r}")
+    if not clean_provider_id:
+        raise ValueError("provider_message_id is required")
+    if not clean_provider_id or len(clean_provider_id) > 200:
+        raise ValueError("provider_message_id must be at most 200 chars")
+    errors_json = json.dumps(errors or [], sort_keys=True,
+                             separators=(",", ":"))[:1000]
+
+    conn = get_connection()
+    try:
+        with conn:
+            cursor = conn.execute(
+                """INSERT INTO message_status_events
+                       (provider_message_id, delivery_id, event_type, wa_id,
+                        status_detail, provider_timestamp, errors_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(provider_message_id, event_type)
+                   DO NOTHING""",
+                (
+                    clean_provider_id,
+                    delivery_id,
+                    event_type,
+                    clean_wa_id,
+                    clean_detail,
+                    clean_ts,
+                    errors_json,
+                ),
+            )
+            inserted = cursor.rowcount == 1
+            if not inserted:
+                return {"applied": False, "delivery": (
+                    get_message_delivery(delivery_id)
+                    if delivery_id is not None else None
+                )}
+
+            delivery = None
+            if delivery_id is not None:
+                delivery = conn.execute(
+                    "SELECT * FROM message_deliveries WHERE id = ?",
+                    (delivery_id,),
+                ).fetchone()
+            if delivery_id is not None and event_type in (
+                "delivered", "read", "failed"
+            ):
+                set_clauses = ["status = ?", "updated_at = datetime('now')"]
+                params = [event_type.upper()]
+                if event_type == "delivered":
+                    set_clauses.append(
+                        "delivered_at = COALESCE(delivered_at, ?)"
+                    )
+                    params.append(now)
+                    set_clauses.append(
+                        "webhook_sync_at = ?"
+                    )
+                    params.append(now)
+                    set_clauses.append(
+                        "failed_at = NULL, last_error_code = NULL, "
+                        "last_error_message = NULL"
+                    )
+                elif event_type == "read":
+                    set_clauses.append(
+                        "read_at = COALESCE(read_at, ?)"
+                    )
+                    params.append(now)
+                    set_clauses.append(
+                        "delivered_at = COALESCE(delivered_at, ?)"
+                    )
+                    params.append(now)
+                    set_clauses.append("webhook_sync_at = ?")
+                    params.append(now)
+                elif event_type == "failed":
+                    set_clauses.append("failed_at = COALESCE(failed_at, ?)")
+                    params.append(now)
+                    set_clauses.append("last_error_code = 'WEBHOOK_FAILED'")
+                    set_clauses.append("last_error_message = ?")
+                    params.append(clean_detail or "Provider reported failure")
+                    set_clauses.append("webhook_sync_at = ?")
+                    params.append(now)
+                params.append(delivery_id)
+                conn.execute(
+                    "UPDATE message_deliveries SET "
+                    + ", ".join(set_clauses)
+                    + " WHERE id = ? AND status IN ('SENT','DELIVERED','READ')",
+                    params,
+                )
+                delivery = conn.execute(
+                    "SELECT * FROM message_deliveries WHERE id = ?",
+                    (delivery_id,),
+                ).fetchone()
+    finally:
+        conn.close()
+    return {
+        "applied": True,
+        "delivery": dict(delivery) if delivery is not None else None,
+    }
+
+
+def get_message_status_events(
+    delivery_id: int | None = None, limit: int = 100
+) -> list[dict]:
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer from 1 to 1000")
+    query = "SELECT * FROM message_status_events"
+    params: list[object] = []
+    if delivery_id is not None:
+        query += " WHERE delivery_id = ?"
+        params.append(delivery_id)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    with db() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def record_incoming_reply(
+    from_phone: str,
+    provider_message_id: str,
+    *,
+    reply_text: str | None = None,
+    reply_type: str = "text",
+    provider_timestamp: str | None = None,
+    delivery_id: int | None = None,
+) -> dict:
+    """Persist an inbound message from a recipient. Idempotent by message ID.
+
+    Storing a reply does not prove the reply was a response to MILAAN's own
+    outbound message or that the sender consented to future marketing.
+    """
+    if reply_type not in ("text", "reaction", "image", "unknown"):
+        raise ValueError(f"unsupported reply_type {reply_type!r}")
+    clean_id = (provider_message_id or "").strip()[:200]
+    clean_from = (from_phone or "").strip()[:32]
+    clean_text = (reply_text or "").strip()[:4096] or None
+    clean_ts = (provider_timestamp or "").strip()[:64] or None
+    if not clean_id or not clean_from:
+        raise ValueError("provider_message_id and from_phone are required")
+    conn = get_connection()
+    try:
+        with conn:
+            cursor = conn.execute(
+                """INSERT INTO message_replies
+                       (provider_message_id, from_phone, reply_type,
+                        reply_text, provider_timestamp, delivery_id)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(provider_message_id) DO NOTHING""",
+                (
+                    clean_id,
+                    clean_from,
+                    reply_type,
+                    clean_text,
+                    clean_ts,
+                    delivery_id,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM message_replies WHERE provider_message_id = ?",
+                (clean_id,),
+            ).fetchone()
+    finally:
+        conn.close()
+    return {"created": cursor.rowcount == 1, "reply": dict(row)}
+
+
+def get_incoming_replies(limit: int = 100) -> list[dict]:
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer from 1 to 1000")
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM message_replies ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]

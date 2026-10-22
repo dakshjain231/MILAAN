@@ -15,11 +15,14 @@ delivery simulation. The core
 invoice-to-follow-up workflow is covered by deterministic end-to-end
 tests, including the Streamlit approval path. Task 9 adds realistic
 synthetic compatibility fixtures, a measured benchmark with a baseline,
-and an isolated judge demo. Live delivery is disabled in the app UI and
-cannot be enabled through environment configuration; mock mode is for
-workflow testing only. No real WhatsApp message is sent by the test suite. There is
-no AI diagnosis, no OCR pipeline, no GST filing and no recovery claim
-anywhere in the pipeline.
+and an isolated judge demo. Task 10 adds an opt-in WhatsApp Cloud API send
+path and an authenticated webhook receiver (`webhook.py`) for
+delivery-status and inbound-reply evidence. Real sending stays off unless
+the environment is explicitly configured, and every real send requires
+both confirmed recipient opt-in and a separate explicit send approval.
+Mock mode remains for workflow testing only. No real WhatsApp message is
+sent by the test suite. There is no AI diagnosis, no OCR pipeline, no GST
+filing and no recovery claim anywhere in the pipeline.
 
 ## GSTR-2B import (Task 4) — staging only
 
@@ -226,14 +229,15 @@ events. Skipped or approved drafts are not editable.
 ## Approved-draft delivery history (Task 7)
 
 `delivery.py` contains the provider integration and its fail-closed
-configuration checks. The current app UI does not construct the live
-provider or make outbound WhatsApp requests. `db.py` persists delivery
-state and the UI can create mock-only records. Importing the app, opening
-the delivery section, approving a draft, or rerunning Streamlit never
-sends anything.
+configuration checks. The app UI constructs the live provider only when
+the environment is fully configured, and only after the operator confirms
+recipient opt-in and explicitly approves the send. `db.py` persists
+delivery state, and the UI can also create clearly labelled mock-only
+records. Importing the app, opening the delivery section, approving a
+draft, or rerunning Streamlit never sends anything.
 
 **Provider configuration and fail-closed behavior.** The service module
-validates these variables, but the app UI keeps live delivery disabled.
+validates these variables; real sends are blocked until all are valid.
 Variables are
 `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
 `WHATSAPP_API_VERSION`, `WHATSAPP_ENABLED`, and optional
@@ -279,7 +283,7 @@ a second unrelated record.
 | `RETRY_PENDING` | Safe transient failure recorded with a finite attempt budget |
 | `FAILED` | Terminal failure or exhausted retries |
 | `UNKNOWN` | Ambiguous outcome; requires operator resolution |
-| `DELIVERED` / `READ` | Reserved for authenticated webhook evidence; never produced by this build |
+| `DELIVERED` / `READ` | Produced only by the authenticated `webhook.py` receiver |
 
 A 2xx response is only recorded `SENT` when it contains a non-empty
 provider message ID; a 2xx without one is `UNKNOWN`. Timeouts and
@@ -293,10 +297,10 @@ definitive 4xx failures are `FAILED` without automatic retry.
 An operator may resolve `UNKNOWN` only with provider evidence:
 `SENT_CONFIRMED` requires a provider message ID and records `SENT`;
 `NOT_SENT` records `RETRY_PENDING` if attempts remain, otherwise
-`FAILED`. Resolution never records `DELIVERED`. A webhook receiver is
-**deferred** because authenticated, replay-safe webhook verification is
-not implemented; `SENT` therefore does not mean the message was
-delivered or read.
+`FAILED`. Resolution never records `DELIVERED`. `DELIVERED`, `READ` and
+`FAILED` updates arrive through the signature-verified webhook receiver
+described below; `SENT` alone does not mean the message was delivered or
+read.
 
 **Persistence.** `message_deliveries` stores the draft FK, idempotency
 key, frozen recipient/body, provider (`whatsapp_cloud_api` or `mock`),
@@ -309,20 +313,72 @@ indexes cover draft/status/provider/next-attempt/provider-message ID.
 `followup_drafts` additionally stores the three approval snapshot
 columns.
 
-**UI.** The delivery section states that live delivery is disabled and
-offers a clearly labelled **simulated (mock)** action. It shows the frozen
-message and recipient, requires confirmation, and labels mock results as
-simulated. Delivery history shows provider IDs, attempts, statuses,
+**UI.** The delivery section offers a clearly labelled **simulated
+(mock)** action and, when the environment is configured, a real send
+action. Both show the frozen message and recipient and require
+confirmation; the real action additionally requires confirmed opt-in and
+a separate explicit send approval. It also shows masked configuration
+status (never credentials), delivery history, webhook status events and
+inbound replies. Delivery history shows provider IDs, attempts, statuses,
 next-attempt time and sanitized errors. Mock retry requires confirmation;
-historical real records cannot be retried from the UI. UNKNOWN resolution requires an operator,
-evidence note and (for acceptance) a provider message ID. There is no
-automatic send, no scheduler and no webhook receiver.
+historical real records cannot be retried from the UI. UNKNOWN resolution
+requires an operator, evidence note and (for acceptance) a provider
+message ID. There is no automatic send and no scheduler; webhook events
+never trigger a send.
 
 Tests use fake transports/providers and assert no network access. They
 cover configuration fail-closed behavior, frozen snapshots, stale
 evidence, duplicate/concurrent claims, missing provider IDs, 429/5xx
 retry bounds, timeouts as `UNKNOWN`, manual resolution, 4xx terminal
 failures, secret redaction, FK integrity and the absence of real sends.
+
+## Delivery status webhook (Task 10)
+
+`webhook.py` is a small, dependency-free (stdlib) receiver that accepts
+Meta's webhook callbacks for delivery status and inbound replies. Run it
+separately from Streamlit:
+
+```sh
+export WHATSAPP_WEBHOOK_ENABLED=true
+export WHATSAPP_VERIFY_TOKEN='choose-a-long-random-string'
+export WHATSAPP_APP_SECRET='your-meta-app-secret'
+export WHATSAPP_WEBHOOK_BIND=127.0.0.1   # keep loopback; reverse-proxy TLS
+export WHATSAPP_WEBHOOK_PORT=8443
+.venv/bin/python webhook.py
+```
+
+- `GET /webhook/whatsapp` answers Meta's subscription handshake only when
+  `hub.mode=subscribe` and `hub.verify_token` matches; it echoes
+  `hub.challenge` verbatim.
+- `POST /webhook/whatsapp` requires a valid `X-Hub-Signature-256`
+  (HMAC-SHA256 of the **raw** body with the app secret, compared with
+  `hmac.compare_digest`). Unsigned or tampered requests are rejected with
+  `403`. Bodies over 1 MiB are rejected with `413`.
+- Status events (`sent`/`delivered`/`read`/`failed`) are stored in
+  `message_status_events` with a `UNIQUE(provider_message_id, event_type)`
+  guard, then applied to the matching delivery. Duplicate retries are
+  no-ops. Statuses for unknown message IDs are recorded as orphan
+  evidence without changing any delivery.
+- Inbound messages are stored in `message_replies`, idempotently by
+  provider message ID. Storing a reply does not prove consent for future
+  messages.
+- Webhook processing never sends a message and never fabricates
+  `DELIVERED`/`READ`. `SENT` still means only that Meta accepted the
+  request.
+
+Expose the receiver over public HTTPS (for example with a reverse proxy
+that terminates TLS and forwards to `127.0.0.1:8443`), then add
+`https://your-host/webhook/whatsapp` as the callback URL in the Meta app
+dashboard and subscribe to the `messages` field. The verify token there
+must match `WHATSAPP_VERIFY_TOKEN`. Do **not** bind the raw receiver to a
+public interface; it logs nothing secret and refuses non-loopback binds
+unless you deliberately override them.
+
+Which states are reachable: with no configuration, only mock deliveries
+are available. With Cloud API credentials but no webhook, `SENT` is the
+only post-send state. With the fully configured webhook, `DELIVERED`,
+`READ` and `FAILED` are recorded from verified events. None of this proves
+opt-in, ownership of a phone number, or actual reading by a human.
 
 ## Real-world validation, benchmark and demo (Task 9)
 
@@ -500,8 +556,10 @@ an actual export in a non-production database before relying on it.
 Environment variables are documented in `.env.example`. The app does
 **not** auto-load `.env`; export variables in your shell or deployment
 environment before starting Streamlit. `.env` is gitignored; never commit
-real secrets. Live WhatsApp delivery remains disabled in the app regardless
-of environment settings; only clearly labelled mock records are available.
+real secrets. Real WhatsApp delivery is enabled only when the Cloud API
+environment is fully configured; otherwise only clearly labelled mock
+records are available. Configure the webhook separately with
+`webhook.py` (see the webhook section above).
 
 ## Run
 
@@ -560,13 +618,15 @@ disabled when the channel/review/evidence checks fail. The UI states on
 every draft that no message has been sent yet.
 
 To exercise delivery UI state, select an approved draft and use the
-simulated action. It never uses the network. Live delivery is disabled in
-this build regardless of `WHATSAPP_*` settings.
-The attempt is persisted before/after the provider call. If the result is
-`RETRY_PENDING`, use the manual retry control only when it is due; if it
-is `UNKNOWN`, use the manual resolution form only with authoritative
-provider evidence. There is no automatic retry and no delivery/read
-webhook, so `SENT` means only that Meta accepted the request.
+simulated action; it never uses the network. When the Cloud API environment
+is configured, the same panel offers a real send that requires confirmed
+opt-in and a separate explicit approval. The attempt is persisted
+before/after the provider call. If the result is `RETRY_PENDING`, use the
+manual retry control only when it is due; if it is `UNKNOWN`, use the
+manual resolution form only with authoritative provider evidence. There is
+no automatic retry; `DELIVERED`/`READ`/`FAILED` arrive only through the
+signature-verified `webhook.py` receiver, so `SENT` means only that Meta
+accepted the request.
 
 ## Later-statement verification
 
@@ -583,10 +643,10 @@ validation, reconciliation results, follow-up approval, or delivery state.
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_later_statement test_security test_realworld test_demo_workflow test_benchmark -v
+.venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_webhook test_later_statement test_security test_realworld test_demo_workflow test_benchmark -v
 ```
 
-The same 272 tests (100 of them parameterized subtests) also run under
+The same 302 tests (100 of them parameterized subtests) also run under
 pytest, which is not a runtime dependency and can be installed only for
 development:
 
@@ -595,7 +655,7 @@ development:
 .venv/bin/python -m pytest -q
 ```
 
-272 tests: schema/constraints, seeding idempotency, legacy migrations
+302 tests: schema/constraints, seeding idempotency, legacy migrations
 (Task 1 suppliers, Task 2 validation-status CHECK, Task 7 additive
 approval snapshots), the full validation rule set (GSTIN format/checksum,
 money exactness, arithmetic, tax structure, rounding boundaries,
@@ -614,7 +674,10 @@ cover fail-closed configuration, frozen snapshots, stale evidence,
 idempotency/concurrent claims, missing provider IDs, 429/5xx retry bounds,
 timeouts as `UNKNOWN`, manual resolution, terminal 4xx failures, secret
 redaction, FK cascade integrity, and mock/simulated behavior with fake
-transports. End-to-end tests cover validation, import, reconciliation,
+transports. Webhook tests cover the challenge handshake, raw-body HMAC
+verification, duplicate-status no-ops, orphan statuses, inbound replies,
+and the rule that webhook processing never sends a message. End-to-end
+tests cover validation, import, reconciliation,
 draft generation, approval, exact and amount-mismatch exclusions, invalid
 invoice exclusion, duplicate-file imports, idempotent regeneration and
 stale-evidence approval blocking. Task 9 tests cover CSV/XLSX variants,
@@ -636,7 +699,8 @@ matches, amount differences, idempotency and source-record immutability.
 | `app.py` | Streamlit entry point and page renderers; `main()` wires the `st.navigation` sidebar |
 | `pages/` | Thin page wrappers (dashboard, purchase invoices, GSTR-2B, reconciliation, mismatches, follow-ups, suppliers, audit log, settings) |
 | `db.py` | SQLite schema, migrations, seed, validation/import/reconciliation/follow-up/verification/delivery persistence |
-| `delivery.py` | WhatsApp config, HTTP provider, deterministic mock, idempotent delivery/retry/UNKNOWN orchestration |
+| `delivery.py` | WhatsApp config, HTTP provider, deterministic mock, idempotent delivery/retry/UNKNOWN orchestration, webhook signature/payload processing |
+| `webhook.py` | Stdlib HTTP receiver for the Meta verification handshake and signature-verified status/reply callbacks |
 | `validation.py` | Pure deterministic invoice/GSTIN validation service |
 | `invoice_import.py` | CSV/XLSX purchase-invoice parser, normalized columns and downloadable template |
 | `gstr2b.py` | Pure GSTR-2B CSV/XLSX parser (normalized schema) |

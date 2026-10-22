@@ -115,12 +115,22 @@ class ScriptedProvider:
         self.max_attempts = max_attempts
         self.calls = []
 
-    def send(self, recipient_phone, message_body, *, idempotency_key=None):
+    def send(
+        self,
+        recipient_phone,
+        message_body,
+        *,
+        idempotency_key=None,
+        template_name=None,
+        template_language=None,
+    ):
         self.calls.append(
             {
                 "recipient_phone": recipient_phone,
                 "message_body": message_body,
                 "idempotency_key": idempotency_key,
+                "template_name": template_name,
+                "template_language": template_language,
             }
         )
         response = self.responses.pop(0)
@@ -934,10 +944,11 @@ class ServiceTests(DatabaseTestCase):
             "RETRY_PENDING",
         )
 
-    def test_webhook_support_is_explicitly_deferred(self):
+    def test_webhook_support_is_now_implemented(self):
         support = delivery.webhook_support()
-        self.assertFalse(support["supported"])
-        self.assertIn("DELIVERED/READ", support["reason"])
+        self.assertTrue(support["supported"])
+        self.assertEqual(support["receiver"], "webhook.py")
+        self.assertIn("delivered", support["handled"])
 
     def test_idempotency_key_changes_with_snapshot(self):
         first = delivery.compute_idempotency_key(
@@ -1078,10 +1089,10 @@ class DeliveryUITests(DatabaseTestCase):
             ).run()
         self.assertEqual(at.exception, [])
         warnings = " ".join(item.value for item in at.warning)
-        self.assertIn("Real delivery is disabled", warnings)
+        self.assertIn("Real delivery is not configured", warnings)
         self.assertEqual(self.delivery_count(), 0)
 
-    def test_ui_live_delivery_stays_disabled_even_when_configured(self):
+    def test_ui_real_send_requires_opt_in_and_approval(self):
         self.approved_draft()
         configured = {
             "WHATSAPP_ENABLED": "true",
@@ -1091,16 +1102,18 @@ class DeliveryUITests(DatabaseTestCase):
         }
         with mock.patch.dict(os.environ, configured):
             at = self.app()
+            self.assertEqual(at.exception, [])
             at.radio(key="delivery_mode").set_value(
                 "WhatsApp Cloud API (real)"
             ).run()
 
         self.assertEqual(at.exception, [])
-        warnings = " ".join(item.value for item in at.warning)
-        self.assertIn("disabled in this build", warnings)
-        self.assertFalse(
-            any("Send via WhatsApp Cloud API" in item.label for item in at.button)
-        )
+        send_buttons = [
+            item for item in at.button
+            if "Send via WhatsApp Cloud API" in item.label
+        ]
+        self.assertEqual(len(send_buttons), 1)
+        self.assertTrue(send_buttons[0].disabled)
         self.assertEqual(self.delivery_count(), 0)
 
 
