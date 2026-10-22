@@ -27,3 +27,12 @@ backups/
 Thumbs.db
 .vscode/
 .idea/
+
+# AI coding tools and agent artifacts
+.claude/
+.agents/
+.cursor/
+*.cursorrules
+.windsurf/
+.aider*
+
