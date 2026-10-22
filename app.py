@@ -2787,14 +2787,14 @@ def _render_later_statement(actor: str) -> None:
         st.info("No later-statement checks recorded yet.")
 
 
-def _render_webjs_demo(actor: str, draft_id: int | None) -> None:
+def _render_webjs_demo(actor: str) -> None:
     st.divider()
-    st.markdown("**WhatsApp Web local service (demo)**")
+    st.markdown("**WhatsApp Web Demo Test (localhost)**")
     st.caption(
         "Unofficial whatsapp-web.js bridge on localhost. Demo only: it sends "
-        "one plain-text preview to your configured consented test number, "
-        "never to a supplier automatically, and is not recorded as a supplier "
-        "delivery. It cannot prove delivery."
+        "one fixed plain-text test message to your configured consented test "
+        "number, never to a supplier automatically, and is not recorded as a "
+        "supplier delivery. It cannot prove delivery."
     )
     try:
         config = webjs.load_webjs_config()
@@ -2862,42 +2862,38 @@ def _render_webjs_demo(actor: str, draft_id: int | None) -> None:
             "WhatsApp under Linked devices, then refresh."
         )
         return
-    if draft_id is None:
-        st.info("Approve a follow-up draft to preview the demo message.")
+    if not summary["test_recipient_masked"]:
+        st.warning(
+            "The demo needs MILAAN_WA_TEST_RECIPIENT. Set it to your own "
+            "consented test number, then restart the app."
+        )
         return
-    try:
-        draft = db.get_followup_draft(draft_id)
-        eligibility = db.get_delivery_eligibility(draft_id)
-    except Exception as exc:
-        st.error(f"Could not load draft evidence: {exc}")
-        return
-    if draft is None or not eligibility["eligible"]:
-        st.warning("Demo send blocked by the current draft evidence.")
-        return
-    st.caption("Preview of the frozen approved follow-up:")
-    st.text(eligibility["approved_text"] or "")
     st.caption(
-        f"Test recipient: `{summary['test_recipient_masked']}`. The supplier "
-        "number is not used by this demo."
+        "Preview of the fixed demo test message. This is not a supplier "
+        "draft and does not use any supplier phone number."
+    )
+    st.text(webjs.DEMO_TEST_MESSAGE)
+    st.caption(
+        f"Test recipient: `{summary['test_recipient_masked']}`. This is the "
+        "only recipient the demo can use."
     )
     consent = st.checkbox(
         "I confirm this test number is mine and consented to receive this "
         "message.",
-        key=f"webjs_consent_{draft_id}",
+        key="webjs_demo_consent",
     )
     approve = st.checkbox(
         "I explicitly approve this single demo send.",
-        key=f"webjs_approve_{draft_id}",
+        key="webjs_demo_approve",
     )
     if st.button(
-        "Send demo to test recipient",
-        key=f"webjs_send_{draft_id}",
+        "Send demo test message",
+        key="webjs_demo_send",
         disabled=not (consent and approve),
         type="primary",
     ):
         try:
-            result = webjs.demo_test_send(
-                draft_id,
+            result = webjs.demo_test_send_message(
                 config=config,
                 actor=actor,
                 confirmed=approve,
@@ -2911,8 +2907,9 @@ def _render_webjs_demo(actor: str, draft_id: int | None) -> None:
             if result["outcome"] == delivery.OUTCOME_ACCEPTED:
                 st.session_state["delivery_flash"] = (
                     "success",
-                    "Demo message accepted by the local service (message ID "
-                    f"{result['provider_message_id']}). This is not a supplier "
+                    "Demo test message accepted by the local service (message "
+                    f"ID {result['provider_message_id']}). Sent only to the "
+                    "configured test recipient; this is not a supplier "
                     "delivery and delivery is not verified.",
                 )
             else:
@@ -3006,7 +3003,6 @@ def _render_delivery(actor: str) -> None:
     approved_drafts = [
         row for row in all_followup_drafts if row["Status"] == "APPROVED"
     ]
-    selected_draft_id: int | None = None
     if not approved_drafts:
         st.info(
             "No approved follow-up drafts yet. Generate drafts and approve "
@@ -3024,7 +3020,6 @@ def _render_delivery(actor: str) -> None:
             key="delivery_draft",
         )
         delivery_draft_id = approved_labels[approved_label]
-        selected_draft_id = delivery_draft_id
         delivery_draft = db.get_followup_draft(delivery_draft_id)
         if delivery_draft is not None:
             eligibility = db.get_delivery_eligibility(delivery_draft_id)
@@ -3173,7 +3168,7 @@ def _render_delivery(actor: str) -> None:
                         )
                         st.rerun()
 
-    _render_webjs_demo(actor, selected_draft_id)
+    _render_webjs_demo(actor)
 
     st.markdown("**Delivery history**")
     if all_deliveries:

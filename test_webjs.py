@@ -436,6 +436,60 @@ class DemoSendTests(DatabaseTestCase):
         self.assertFalse(result["audit_recorded"])
 
 
+
+class StandaloneDemoSendTests(DatabaseTestCase):
+    def test_requires_both_confirmations(self):
+        with self.assertRaises(webjs.WebJsBlocked):
+            webjs.demo_test_send_message(
+                config=ready_config(), confirmed=True, opt_in_confirmed=False,
+            )
+        with self.assertRaises(webjs.WebJsBlocked):
+            webjs.demo_test_send_message(
+                config=ready_config(), confirmed=False, opt_in_confirmed=True,
+            )
+
+    def test_requires_consented_test_recipient(self):
+        with self.assertRaises(webjs.WebJsConfigurationError):
+            webjs.demo_test_send_message(
+                config=ready_config(test_recipient=None),
+                confirmed=True,
+                opt_in_confirmed=True,
+            )
+
+    def test_sends_fixed_demo_message_without_any_draft(self):
+        fake = FakeTransport([(200, body({"ok": True, "messageId": "wamid.demo.3"}))])
+        with mock.patch.object(webjs, "_default_transport", fake):
+            result = webjs.demo_test_send_message(
+                config=ready_config(), actor="local-demo",
+                confirmed=True, opt_in_confirmed=True,
+            )
+        self.assertEqual(fake.calls[0]["payload"]["to"], TEST_RECIPIENT)
+        self.assertEqual(fake.calls[0]["payload"]["message"], webjs.DEMO_TEST_MESSAGE)
+        self.assertEqual(result["outcome"], delivery.OUTCOME_ACCEPTED)
+        self.assertIsNone(result["draft_id"])
+        self.assertEqual(result["mode"], "standalone")
+        self.assertFalse(result["recorded_as_delivery"])
+        self.assertTrue(result["audit_recorded"])
+        self.assertEqual(self.delivery_count(), 0)
+        events = db.get_system_audit_events()
+        self.assertTrue(any(e["Event"] == "webjs_demo_send" for e in events))
+        serialized = json.dumps(events)
+        self.assertNotIn(TOKEN, serialized)
+        self.assertNotIn("9999999999", serialized)
+
+    def test_rejects_empty_or_oversized_message(self):
+        with self.assertRaises(webjs.WebJsBlocked):
+            webjs.demo_test_send_message(
+                "   ", config=ready_config(), confirmed=True,
+                opt_in_confirmed=True,
+            )
+        with self.assertRaises(webjs.WebJsBlocked):
+            webjs.demo_test_send_message(
+                "x" * 4097, config=ready_config(), confirmed=True,
+                opt_in_confirmed=True,
+            )
+
+
 class DeliveryUITests(DatabaseTestCase):
     def app(self):
         from streamlit.testing.v1 import AppTest
@@ -472,7 +526,7 @@ class DeliveryUITests(DatabaseTestCase):
         raise AssertionError(f"unexpected url {url}")
 
     def test_ui_disabled_by_default_sends_nothing(self):
-        self.approved_draft()
+        self.approved_draft(approve=False)
         at = self.app()
         self.assertEqual(at.exception, [])
         self.assertEqual(self.delivery_count(), 0)
@@ -481,10 +535,10 @@ class DeliveryUITests(DatabaseTestCase):
         )
         self.assertIn("Not enabled", messages)
         labels = [button.label for button in at.button]
-        self.assertNotIn("Send demo to test recipient", labels)
+        self.assertNotIn("Send demo test message", labels)
 
-    def test_ui_ready_requires_confirmation_then_uses_test_recipient(self):
-        draft_id = self.approved_draft()
+    def test_ui_ready_without_approved_draft_shows_preview_and_controls(self):
+        self.approved_draft(approve=False)
         calls = []
 
         def transport(method, url, headers, payload, timeout):
@@ -496,25 +550,78 @@ class DeliveryUITests(DatabaseTestCase):
             at = self.app()
             self.assertEqual(at.exception, [])
             self.assertEqual(self.delivery_count(), 0)
+            preview = " ".join(item.value for item in at.text)
+            self.assertIn("MILAAN WhatsApp Web demo test", preview)
             send_buttons = [
                 button for button in at.button
-                if button.label == "Send demo to test recipient"
+                if button.label == "Send demo test message"
             ]
             self.assertEqual(len(send_buttons), 1)
             self.assertTrue(send_buttons[0].disabled)
-            at.checkbox(key=f"webjs_consent_{draft_id}").check().run()
-            at.checkbox(key=f"webjs_approve_{draft_id}").check().run()
-            at.button(key=f"webjs_send_{draft_id}").click().run()
+
+            at.checkbox(key="webjs_demo_consent").check().run()
+            self.assertTrue(
+                at.button(key="webjs_demo_send").disabled
+            )
+            self.assertEqual(
+                [call for call in calls if call["url"].endswith("/send")], []
+            )
+
+            at.checkbox(key="webjs_demo_approve").check().run()
+            self.assertFalse(
+                at.button(key="webjs_demo_send").disabled
+            )
+            at.button(key="webjs_demo_send").click().run()
 
         self.assertEqual(at.exception, [])
         self.assertEqual(self.delivery_count(), 0)
         sent = [call for call in calls if call["url"].endswith("/send")]
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0]["payload"]["to"], TEST_RECIPIENT)
+        self.assertEqual(sent[0]["payload"]["message"], webjs.DEMO_TEST_MESSAGE)
         events = db.get_system_audit_events()
         self.assertTrue(any(e["Event"] == "webjs_demo_send" for e in events))
         success = " ".join(item.value for item in at.success)
         self.assertIn("not a supplier delivery", success)
+
+    def test_ui_missing_test_recipient_hides_demo_controls(self):
+        self.approved_draft(approve=False)
+        env = self.webjs_env()
+        env["MILAAN_WA_TEST_RECIPIENT"] = ""
+        with mock.patch.dict(os.environ, env, clear=False), \
+                mock.patch.object(webjs, "_default_transport", self.transport):
+            at = self.app()
+        self.assertEqual(at.exception, [])
+        labels = [button.label for button in at.button]
+        self.assertNotIn("Send demo test message", labels)
+        warnings = " ".join(item.value for item in at.warning)
+        self.assertIn("MILAAN_WA_TEST_RECIPIENT", warnings)
+
+    def test_ui_not_ready_hides_demo_controls(self):
+        self.approved_draft(approve=False)
+
+        def transport(method, url, headers, payload, timeout):
+            if url.endswith("/status"):
+                return 200, body({
+                    "ok": True,
+                    "status": "qr",
+                    "ready": False,
+                    "qrAvailable": True,
+                    "phoneMasked": None,
+                    "since": None,
+                })
+            if url.endswith("/qr"):
+                return 200, body({"ok": True, "status": "qr", "qr": None})
+            raise AssertionError(f"unexpected url {url}")
+
+        with mock.patch.dict(os.environ, self.webjs_env()), \
+                mock.patch.object(webjs, "_default_transport", transport):
+            at = self.app()
+        self.assertEqual(at.exception, [])
+        labels = [button.label for button in at.button]
+        self.assertNotIn("Send demo test message", labels)
+        messages = " ".join(item.value for item in at.info)
+        self.assertIn("not linked yet", messages)
 
 
 if __name__ == "__main__":

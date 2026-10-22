@@ -30,6 +30,12 @@ MIN_TOKEN_LENGTH = 16
 DEFAULT_TIMEOUT_SECONDS = 8.0
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
+DEMO_TEST_MESSAGE = (
+    "MILAAN WhatsApp Web demo test. This message confirms that the local "
+    "WhatsApp Web service can send to the consented test number. No supplier "
+    "action is required."
+)
+
 
 class WebJsError(RuntimeError):
     """Base error with a safe, non-secret message."""
@@ -429,19 +435,62 @@ class WhatsAppWebJsProvider:
         )
 
 
-def demo_test_send(
-    draft_id: int,
+def _send_demo_body(
+    body: str,
     *,
-    config: WebJsConfig | None = None,
-    actor: str = "local-demo",
-    confirmed: bool = False,
-    opt_in_confirmed: bool = False,
+    cfg: WebJsConfig,
+    recipient: str,
+    actor: str,
+    subject_type: str,
+    subject_id: str,
+    extra_details: dict,
 ) -> dict:
-    """Send one approved follow-up preview to the consented test recipient.
+    response = WhatsAppWebJsProvider(cfg).send(recipient, body)
+    masked = mask_phone(recipient)
+    error_message = (
+        delivery.sanitize_error(response.error_message, secrets=(cfg.token,))
+        if response.error_message else None
+    )
+    details = {
+        "provider": PROVIDER_WEBJS,
+        **extra_details,
+        "test_recipient_masked": masked,
+        "outcome": response.outcome,
+        "error_code": response.error_code,
+        "provider_message_id": response.provider_message_id,
+        "recorded_as_delivery": False,
+    }
+    result = {
+        "provider": PROVIDER_WEBJS,
+        "recipient_masked": masked,
+        "body": body,
+        "outcome": response.outcome,
+        "provider_message_id": response.provider_message_id,
+        "http_status": response.http_status,
+        "error_code": response.error_code,
+        "error_message": error_message,
+        "simulated": False,
+        "recorded_as_delivery": False,
+        "audit_recorded": False,
+        **extra_details,
+    }
+    try:
+        db.record_system_audit_event(
+            actor=actor,
+            event_type="webjs_demo_send",
+            subject_type=subject_type,
+            subject_id=subject_id,
+            details=details,
+        )
+        result["audit_recorded"] = True
+    except Exception:
+        result["audit_recorded"] = False
+    return result
 
-    This never creates a ``message_deliveries`` row and never uses the
-    supplier's phone number. Both explicit confirmations are mandatory.
-    """
+
+def _require_demo_prerequisites(
+    *, config: WebJsConfig | None, confirmed: bool, opt_in_confirmed: bool
+) -> tuple[WebJsConfig, str]:
     if not confirmed or not opt_in_confirmed:
         raise WebJsBlocked(
             "Demo send blocked: explicit send approval and confirmation that "
@@ -457,6 +506,27 @@ def demo_test_send(
         raise WebJsConfigurationError(
             "Demo send blocked: MILAAN_WA_TEST_RECIPIENT is not plausible."
         )
+    return cfg, recipient
+
+
+def demo_test_send(
+    draft_id: int,
+    *,
+    config: WebJsConfig | None = None,
+    actor: str = "local-demo",
+    confirmed: bool = False,
+    opt_in_confirmed: bool = False,
+) -> dict:
+    """Send one approved follow-up preview to the consented test recipient.
+
+    This never creates a ``message_deliveries`` row and never uses the
+    supplier's phone number. Both explicit confirmations are mandatory.
+    """
+    cfg, recipient = _require_demo_prerequisites(
+        config=config,
+        confirmed=confirmed,
+        opt_in_confirmed=opt_in_confirmed,
+    )
     draft = db.get_followup_draft(draft_id)
     if draft is None:
         raise WebJsBlocked("Demo send blocked: draft not found.")
@@ -468,45 +538,49 @@ def demo_test_send(
     body = eligibility["approved_text"]
     if not body:
         raise WebJsBlocked("Demo send blocked: approved message is missing.")
-
-    response = WhatsAppWebJsProvider(cfg).send(recipient, body)
-    masked = mask_phone(recipient)
-    error_message = (
-        delivery.sanitize_error(response.error_message, secrets=(cfg.token,))
-        if response.error_message else None
+    return _send_demo_body(
+        body,
+        cfg=cfg,
+        recipient=recipient,
+        actor=actor,
+        subject_type="followup_draft",
+        subject_id=str(draft_id),
+        extra_details={"draft_id": draft_id, "mode": "approved_draft"},
     )
-    result = {
-        "draft_id": draft_id,
-        "recipient_masked": masked,
-        "body": body,
-        "provider": PROVIDER_WEBJS,
-        "outcome": response.outcome,
-        "provider_message_id": response.provider_message_id,
-        "http_status": response.http_status,
-        "error_code": response.error_code,
-        "error_message": error_message,
-        "simulated": False,
-        "recorded_as_delivery": False,
-        "audit_recorded": False,
-    }
-    details = {
-        "provider": PROVIDER_WEBJS,
-        "draft_id": draft_id,
-        "test_recipient_masked": masked,
-        "outcome": response.outcome,
-        "error_code": response.error_code,
-        "provider_message_id": response.provider_message_id,
-        "recorded_as_delivery": False,
-    }
-    try:
-        db.record_system_audit_event(
-            actor=actor,
-            event_type="webjs_demo_send",
-            subject_type="followup_draft",
-            subject_id=draft_id,
-            details=details,
+
+
+def demo_test_send_message(
+    message: str | None = None,
+    *,
+    config: WebJsConfig | None = None,
+    actor: str = "local-demo",
+    confirmed: bool = False,
+    opt_in_confirmed: bool = False,
+) -> dict:
+    """Send the fixed demo test message without any draft or supplier data.
+
+    The message goes only to ``MILAAN_WA_TEST_RECIPIENT``. No supplier phone
+    number is read, no ``message_deliveries`` row is created, and only the
+    existing safe ``webjs_demo_send`` audit event is recorded.
+    """
+    cfg, recipient = _require_demo_prerequisites(
+        config=config,
+        confirmed=confirmed,
+        opt_in_confirmed=opt_in_confirmed,
+    )
+    body = (DEMO_TEST_MESSAGE if message is None else str(message)).strip()
+    if not body:
+        raise WebJsBlocked("Demo send blocked: the test message is empty.")
+    if len(body) > 4096:
+        raise WebJsBlocked(
+            "Demo send blocked: the test message is longer than 4096 characters."
         )
-        result["audit_recorded"] = True
-    except Exception:
-        result["audit_recorded"] = False
-    return result
+    return _send_demo_body(
+        body,
+        cfg=cfg,
+        recipient=recipient,
+        actor=actor,
+        subject_type="whatsapp_web_demo",
+        subject_id="demo-test",
+        extra_details={"draft_id": None, "mode": "standalone"},
+    )
