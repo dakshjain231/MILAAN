@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -123,9 +124,7 @@ class InvoiceImportParseTests(unittest.TestCase):
 
 class InvoiceImportSaveTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(
-            dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode"
-        )
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test.db")
         import db
@@ -138,6 +137,7 @@ class InvoiceImportSaveTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_save_creates_supplier_and_validated_invoice(self):
         parsed = invoice_import.parse_invoice_file(

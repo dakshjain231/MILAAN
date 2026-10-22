@@ -5,6 +5,7 @@ Run: .venv/bin/python -m unittest test_gstr2b -v
 
 import io
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -321,7 +322,7 @@ class XlsxParsingTests(unittest.TestCase):
 
 class PersistenceTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
         import db
@@ -334,6 +335,7 @@ class PersistenceTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _save(self, rows, name="gstr2b.csv"):
         parsed = gstr2b.parse_gstr2b(csv_bytes(rows), name)

@@ -434,12 +434,14 @@ confirmation.
   Task 2 databases are likewise rebuilt in place to allow the
   `needs_review` validation status; rows are preserved.
 
-Seed invoices start as `pending` (not `valid`): their supplier GSTINs
-are fabricated placeholders that are not checksum-valid, so validation
-must flag them rather than treat them as verified. One invoice is
-deliberately `validation_status='invalid'`. `seed_demo_data()` is
-idempotent (WHERE NOT EXISTS on natural keys, one all-or-nothing
-transaction).
+Demo suppliers use checksum-valid synthetic GSTINs (`DEMO_SUPPLIERS`:
+`27AAACS1234A1Z2`, `29AAACB5678B1ZP`, `24AAACD9012C1ZB`), so the
+deterministic validator confirms them as structurally valid. They are
+still fabricated and do not correspond to real registrations.
+`seed_demo_data()` seeds six synthetic invoices: five validate as valid
+and one (`INV-DEMO-201`) is intentionally invalid because its date is
+`2026-04-31`. Seeding is idempotent (WHERE NOT EXISTS on natural keys,
+one all-or-nothing transaction).
 
 ## Stack
 
@@ -581,7 +583,7 @@ validation, reconciliation results, follow-up approval, or delivery state.
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_later_statement test_security test_realworld test_benchmark test_demo_workflow -v
+.venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_later_statement test_security test_realworld test_demo_workflow test_benchmark -v
 ```
 
 The same 272 tests (100 of them parameterized subtests) also run under

@@ -4,6 +4,7 @@ Run: .venv/bin/python -m unittest test_db -v
 """
 
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -19,7 +20,7 @@ EXPECTED_SEED_TOTAL_GST_PAISE = 1_604_886
 
 class DBTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
 
@@ -28,6 +29,7 @@ class DBTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_default_path_when_env_unset(self):
         import db
@@ -65,7 +67,7 @@ class DBTests(unittest.TestCase):
 
 class SupplierInvoiceSchemaTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
         import db
@@ -78,6 +80,7 @@ class SupplierInvoiceSchemaTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _add_supplier(self, name="Test Supplies Pvt Ltd", gstin="27ABCDE1234F1Z5"):
         with self.db.db() as conn:
@@ -239,7 +242,7 @@ class SupplierInvoiceSchemaTests(unittest.TestCase):
 
 class SeedTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
         import db
@@ -252,6 +255,7 @@ class SeedTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _counts(self):
         with self.db.db() as conn:
@@ -342,7 +346,7 @@ class SeedTests(unittest.TestCase):
 
 class LegacyMigrationTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
 
     def tearDown(self):
@@ -350,6 +354,7 @@ class LegacyMigrationTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_task1_schema_is_migrated_and_data_preserved(self):
         legacy_path = Path(self._tmp) / "legacy.db"
@@ -393,7 +398,7 @@ class AppSmokeTests(unittest.TestCase):
     button via streamlit.testing.v1.AppTest."""
 
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
 
@@ -402,6 +407,7 @@ class AppSmokeTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_app_runs_without_exception(self):
         from streamlit.testing.v1 import AppTest

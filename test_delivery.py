@@ -8,6 +8,7 @@ network, no real token is used, and no real message is sent.
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -21,7 +22,6 @@ import db  # noqa: E402
 import delivery  # noqa: E402
 import gstr2b  # noqa: E402
 
-TMP_ROOT = "/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode"
 _CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _CSV_HEADER = (
     "supplier_gstin,invoice_number,invoice_date,tax_period,"
@@ -357,7 +357,7 @@ class ProviderTests(unittest.TestCase):
 
 class DatabaseTestCase(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir=TMP_ROOT)
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
         db.init_db()
@@ -367,6 +367,7 @@ class DatabaseTestCase(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def add_supplier(self, name, gstin, phone="9999999999"):
         with db.db() as conn:

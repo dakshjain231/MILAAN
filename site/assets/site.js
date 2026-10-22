@@ -1,42 +1,4 @@
 (function () {
-  // Fill ownership/legal fields from config.json. Any field left blank in the
-  // config keeps the conspicuous pre-launch blocker already present in the
-  // HTML, so no operator-specific detail is ever fabricated.
-  function applyLegalConfig() {
-    const slots = document.querySelectorAll("[data-config]");
-    if (!slots.length) {
-      return;
-    }
-    fetch("config.json", { cache: "no-store" })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("config unavailable");
-        }
-        return response.json();
-      })
-      .then(function (config) {
-        slots.forEach(function (slot) {
-          const key = slot.getAttribute("data-config");
-          const value = config[key];
-          if (typeof value === "string" && value.trim() !== "") {
-            slot.textContent = value.trim();
-            slot.classList.remove("is-blocked");
-          } else if (slot.classList.contains("needs-review")) {
-            slot.classList.add("is-blocked");
-          }
-        });
-      })
-      .catch(function () {
-        slots.forEach(function (slot) {
-          if (slot.classList.contains("needs-review")) {
-            slot.classList.add("is-blocked");
-          }
-        });
-      });
-  }
-
-  applyLegalConfig();
-
   const toggle = document.querySelector("[data-nav-toggle]");
   const nav = document.getElementById("site-nav");
 

@@ -8,6 +8,7 @@ algorithm (written independently of validation.py).
 """
 
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -346,7 +347,7 @@ class InvoiceValidationTests(unittest.TestCase):
 
 class DBValidationIntegrationTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
         import db
@@ -359,6 +360,7 @@ class DBValidationIntegrationTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _add_invoice(self, gstin=GSTIN_INTRA, **overrides):
         fields = valid_invoice(**overrides)
@@ -507,7 +509,7 @@ class ValidationStatusMigrationTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         self._path = Path(self._tmp) / "legacy_task2.db"
         os.environ["DATABASE_PATH"] = str(self._path)
@@ -545,6 +547,7 @@ class ValidationStatusMigrationTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_old_check_is_rebuilt_and_rows_preserved(self):
         import db
@@ -585,7 +588,7 @@ class AppValidationFlowTests(unittest.TestCase):
     """Clicks the real Streamlit buttons via streamlit.testing.v1.AppTest."""
 
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode")
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
 
@@ -594,6 +597,7 @@ class AppValidationFlowTests(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_seed_then_validate_button_updates_ui(self):
         from streamlit.testing.v1 import AppTest

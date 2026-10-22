@@ -6,6 +6,7 @@ All GSTINs, invoices and GSTR-2B rows are synthetic.
 """
 
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -322,9 +323,7 @@ class PureMatchingTests(unittest.TestCase):
 
 class DatabaseTestCase(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.mkdtemp(
-            dir="/var/folders/pf/xbcbqlsj1vbc7w8hsd5msqy80000gn/T/opencode"
-        )
+        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
         self._old_env = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
         db.init_db()
@@ -334,6 +333,7 @@ class DatabaseTestCase(unittest.TestCase):
             os.environ.pop("DATABASE_PATH", None)
         else:
             os.environ["DATABASE_PATH"] = self._old_env
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def add_supplier(self, name="Synthetic Traders", gstin=GSTIN_A):
         with db.db() as conn:
