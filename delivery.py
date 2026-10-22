@@ -732,7 +732,23 @@ def _dispatch_claimed(
             error_message=response.error_message
             or "Provider outcome could not be established.",
         )
-    return db.get_message_delivery(delivery_id)
+    final = db.get_message_delivery(delivery_id)
+    if final is not None:
+        db.record_system_audit_event(
+            actor="system",
+            event_type="delivery_send_attempt",
+            subject_type="message_delivery",
+            subject_id=delivery_id,
+            details={
+                "provider": provider.name,
+                "status": final["status"],
+                "attempt": final["attempt_count"],
+                "max_attempts": final["max_attempts"],
+                "http_status": final["last_http_status"],
+                "error_code": final["last_error_code"],
+            },
+        )
+    return final
 
 
 def _ensure_provider_ready(provider: DeliveryProvider) -> None:
@@ -884,6 +900,18 @@ def resolve_unknown(
         resolved_by=resolved_by,
         note=note,
         provider_message_id=provider_message_id,
+    )
+    db.record_system_audit_event(
+        actor=resolved_by,
+        event_type="delivery_resolved",
+        subject_type="message_delivery",
+        subject_id=delivery_id,
+        details={
+            "outcome": outcome,
+            "provider_message_id_recorded": bool(
+                (provider_message_id or "").strip()
+            ),
+        },
     )
 
 

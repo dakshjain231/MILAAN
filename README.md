@@ -248,9 +248,10 @@ Variables are
 `WHATSAPP_API_VERSION`, `WHATSAPP_ENABLED`, and optional
 `WHATSAPP_MAX_ATTEMPTS` (default 3, maximum 5). `WHATSAPP_ENABLED`
 defaults to false. Configuration cannot enable live delivery through the
-app. `.env` files are **not loaded automatically**; export the
-variables in the shell that starts Streamlit (or configure them through
-your deployment environment). Never commit or log the token.
+app. For local development, `scripts/run_app.py` loads the repository-root
+`.env` once and deterministically; variables already set in the shell always
+win, so deployments should set real environment variables instead. Never
+commit or log the token.
 
 The configured API version is required and validated against
 `v<major>.<minor>`; MILAAN does not guess or hardcode a currently
@@ -420,19 +421,26 @@ controls stay hidden rather than falling back to a supplier number.
 brew install node                 # if Node is not already installed
 cd whatsapp_service
 npm install                       # downloads Chromium via Puppeteer
-export MILAAN_WA_SERVICE_TOKEN="$(openssl rand -hex 32)"
-export MILAAN_WA_SERVICE_PORT=8801
-export MILAAN_WA_SERVICE_BIND=127.0.0.1
-npm start
+cd ..
+cp .env.example .env              # then fill in the values below
 ```
 
-In the Streamlit shell, export the **same** token plus the demo settings:
+Put the shared demo settings in the repository-root `.env` (gitignored):
 
 ```sh
-export MILAAN_WA_ENABLED=true
-export MILAAN_WA_SERVICE_TOKEN="<same token>"
-export MILAAN_WA_TEST_RECIPIENT="9198XXXXXXXX"
-.venv/bin/streamlit run app.py
+MILAAN_WA_ENABLED=true
+MILAAN_WA_SERVICE_TOKEN="<openssl rand -hex 32>"
+MILAAN_WA_TEST_RECIPIENT="9198XXXXXXXX"
+MILAAN_WA_SERVICE_PORT=8801
+MILAAN_WA_SERVICE_BIND=127.0.0.1
+```
+
+Start the service and the app through the launchers. Each reads `.env`
+once; existing shell variables still win:
+
+```sh
+.venv/bin/python scripts/run_webjs.py    # terminal 1: local WhatsApp Web demo
+.venv/bin/python scripts/run_app.py      # terminal 2: Streamlit app
 ```
 
 Open **Settings** or **Supplier follow-ups → Delivery**, scan the QR under
@@ -581,7 +589,24 @@ one all-or-nothing transaction).
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+cp .env.example .env      # optional; edit values, never commit it
 ```
+
+## Troubleshooting startup
+
+- **Configuration did not take effect.** Confirm you started the app with
+  `scripts/run_app.py`. Running `.venv/bin/streamlit run app.py` directly
+  does not read `.env`. A variable already exported in the shell wins over
+  the file; check `echo "$WHATSAPP_ENABLED"`.
+- **Restart after changes.** Stop the launcher (Ctrl+C) and start it again
+  after editing `.env`; neither Streamlit nor the Node service reloads it.
+- **Port already in use.** Pass `--server.port NNNN` to
+  `scripts/run_app.py`, or `--port NNNN` to `scripts/run_webhook.py`.
+- **Node launcher says dependencies are missing.** Run
+  `cd whatsapp_service && npm ci`.
+- **The webhook never records DELIVERED/READ/FAILED.** The receiver must
+  be reachable over HTTPS and its callback URL subscribed in the Meta
+  dashboard with the same verify token.
 
 ## Production operation
 
@@ -620,22 +645,31 @@ column labels such as `GSTIN of supplier`, `Invoice No`, `Invoice Dt`,
 It still does not claim compatibility with every GST portal export; validate
 an actual export in a non-production database before relying on it.
 
-Environment variables are documented in `.env.example`. The app does
-**not** auto-load `.env`; export variables in your shell or deployment
-environment before starting Streamlit. `.env` is gitignored; never commit
-real secrets. Real WhatsApp delivery is enabled only when the Cloud API
-environment is fully configured; otherwise only clearly labelled mock
-records are available. Configure the webhook separately with
-`webhook.py` (see the webhook section above).
+Environment variables are documented in `.env.example`. For local runs,
+`scripts/run_app.py`, `scripts/run_webjs.py` and `scripts/run_webhook.py`
+load the repository-root `.env` exactly once; variables already present in
+the environment always win, so production deployments should set real
+environment variables. `.env` is gitignored; never commit real secrets.
+Real WhatsApp delivery is enabled only when the Cloud API environment is
+fully configured; otherwise only clearly labelled mock records are
+available. Configure the webhook separately with `webhook.py` (see the
+webhook section above).
 
 ## Run
 
 ```bash
-.venv/bin/streamlit run app.py
+.venv/bin/python scripts/run_app.py
 ```
 
-Then open http://localhost:8501. The app uses `st.navigation` with a left
-sidebar; each page has its own URL:
+The launcher loads the repository-root `.env` (existing environment
+variables take priority) and then starts Streamlit. Running
+`.venv/bin/streamlit run app.py` directly still works, but it will not read
+`.env`, so every variable must be exported first.
+
+By default the launcher binds to loopback (`127.0.0.1`) so the local
+workspace is not exposed to the network; pass `--server.address 0.0.0.0`
+only inside a controlled deployment. Then open http://localhost:8501. The
+app uses `st.navigation` with a left sidebar; each page has its own URL:
 
 - **Dashboard** (`/`) - workspace counts, GSTR-2B evidence, and an
   attention table of invoices that need action.
@@ -646,13 +680,14 @@ sidebar; each page has its own URL:
 - **Reconciliation** (`/reconciliation`) - select a batch, set a paise
   tolerance (0 = exact), run reconciliation, and inspect run history.
 - **Mismatches** (`/mismatches`) - invoice-level evidence for
-  non-matched results in the selected run.
+  non-matched results in the selected run, including a field-by-field
+  taxable-value and CGST/SGST/IGST comparison against the matched 2B row.
 - **Follow-ups** (`/follow-ups`) - eligibility groups, draft generation,
   edit/approve/skip, and later-statement verification.
 - **Suppliers** (`/suppliers`), **Audit log** (`/audit-log`) and
   **Settings** (`/settings`) - directory, event trail, and workspace
-  status including the isolated demo workspace and mock-only delivery
-  history.
+  status including the isolated demo workspace and delivery history
+  (mock and, when configured, Cloud API records).
 
 Nothing is transmitted by the app.
 
@@ -795,7 +830,13 @@ matches, amount differences, idempotency and source-record immutability.
 | `test_later_statement.py` | Later-batch evidence checks for approved follow-up drafts |
 | `test_security.py` | Production access policy and operational audit tests |
 | `security.py` | Environment-driven OIDC access policy |
+| `scripts/env_loader.py` | Deterministic repository-root `.env` loader; never overrides existing variables |
+| `scripts/run_app.py` | Load `.env`, then start Streamlit |
+| `scripts/run_webjs.py` | Load `.env`, then start the local WhatsApp Web demo service |
+| `scripts/run_webhook.py` | Load `.env`, then start the verified webhook receiver |
 | `scripts/backup_database.py` | Consistent SQLite backup with integrity verification |
+| `test_env_loader.py` | `.env` parsing, quoting, precedence and missing-file tests |
+| `test_recovery_ui.py` | Delivery retry/UNKNOWN-resolution UI and delivery audit-event tests |
 | `INTEGRATION_REVIEW.md` | Source inventory, integration choices and attribution limitation |
 | `benchmark.py` | Deterministic synthetic benchmark with measured metrics and baseline |
 | `test_benchmark.py` | Benchmark reproducibility and metric regression tests |

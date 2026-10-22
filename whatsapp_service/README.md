@@ -58,24 +58,30 @@ npx puppeteer browsers install chrome
 Use the same 16+ character token for the service and the Python app. Generate
 one with `openssl rand -hex 32`.
 
+The simplest path is to put the shared settings in the repository-root
+`.env` (gitignored), then start each process through its launcher:
+
 ```sh
-cd whatsapp_service
-export MILAAN_WA_SERVICE_TOKEN="$(openssl rand -hex 32)"
-export MILAAN_WA_SERVICE_PORT=8801
-export MILAAN_WA_SERVICE_BIND=127.0.0.1
-export MILAAN_WA_HEADLESS=true
-npm start
+cd whatsapp_service && npm ci && cd ..
+cp .env.example .env    # set the values below in .env
+.venv/bin/python scripts/run_webjs.py   # terminal 1: this service
+.venv/bin/python scripts/run_app.py     # terminal 2: Streamlit
 ```
 
-In the terminal that runs Streamlit, export the same token plus the demo
-settings:
+`scripts/run_webjs.py` loads `.env` once; variables already exported in the
+shell still win. Running `npm start` directly remains supported but will not
+read the repository-root `.env`.
+
+Required `.env` values:
 
 ```sh
-export MILAAN_WA_ENABLED=true
-export MILAAN_WA_SERVICE_TOKEN="<the same token>"
-export MILAAN_WA_TEST_RECIPIENT="9198XXXXXXXX"
-export MILAAN_WA_SERVICE_URL="http://127.0.0.1:8801"
-.venv/bin/streamlit run app.py
+MILAAN_WA_ENABLED=true
+MILAAN_WA_SERVICE_TOKEN="<openssl rand -hex 32>"
+MILAAN_WA_TEST_RECIPIENT="9198XXXXXXXX"
+MILAAN_WA_SERVICE_URL="http://127.0.0.1:8801"
+MILAAN_WA_SERVICE_PORT=8801
+MILAAN_WA_SERVICE_BIND=127.0.0.1
+MILAAN_WA_HEADLESS=true
 ```
 
 Open **Supplier follow-ups → Delivery** or **Settings**. While the service is

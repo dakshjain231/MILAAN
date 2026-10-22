@@ -1484,10 +1484,17 @@ def _render_dashboard(data: dict, actor: str = "local-demo") -> None:
         f"{len(pending)} awaiting review"
         if pending else "No drafts awaiting review"
     )
-    delivery_meta = (
-        f"{len(data['deliveries'])} recorded · mock only"
-        if data["deliveries"] else "No delivery attempts"
-    )
+    if not data["deliveries"]:
+        delivery_meta = "No delivery attempts"
+    else:
+        has_real = any(
+            row["provider"] == delivery.PROVIDER_WHATSAPP
+            for row in data["deliveries"]
+        )
+        delivery_meta = (
+            f"{len(data['deliveries'])} recorded · "
+            + ("Cloud API + mock" if has_real else "mock only")
+        )
 
     _render_ui_html(
         f"""
@@ -1956,16 +1963,6 @@ def page_purchase_invoices() -> None:
         hide_index=True,
     )
 
-    issues = st.session_state.get("purchase_validation_results")
-    if issues:
-        with st.expander("Last validation details", expanded=False):
-            for item in issues:
-                st.markdown(
-                    f"**{item['invoice_number']}** — `{item['status']}`"
-                )
-                for issue in item["issues"]:
-                    st.write(f"- {issue}")
-
 
 def page_gstr2b_import() -> None:
     actor = _page_shell(
@@ -2341,7 +2338,7 @@ def page_mismatches() -> None:
     statuses = sorted({row["Status"] for row in results})
     status_filter = st.selectbox(
         "Status",
-        ["All exceptions"] + statuses,
+        ["All exceptions", "All statuses"] + statuses,
         key="mismatch_status",
     )
     if status_filter == "All exceptions":
@@ -2349,7 +2346,7 @@ def page_mismatches() -> None:
             row for row in results
             if row["Status"] != reconciliation.STATUS_MATCHED
         ]
-    elif status_filter == "All":
+    elif status_filter == "All statuses":
         rows = results
     else:
         rows = [row for row in results if row["Status"] == status_filter]
@@ -2379,14 +2376,68 @@ def page_mismatches() -> None:
         f"method `{detail['Method'] or 'none'}`"
     )
     st.json(detail, expanded=False)
+    invoice = None
+    try:
+        invoice = db.get_invoice(int(detail["Invoice #"]))
+    except (TypeError, ValueError):
+        invoice = None
+    batch_row = None
     if detail["2B row"]:
         try:
-            row = db.get_gstr2b_row(int(detail["2B row"]))
+            batch_row = db.get_gstr2b_row(int(detail["2B row"]))
         except (TypeError, ValueError):
-            row = None
-        if row is not None:
-            with st.expander("GSTR-2B source row"):
-                st.json(row, expanded=False)
+            batch_row = None
+    if invoice is not None:
+        st.markdown("**Field-by-field evidence**")
+
+        def money(value) -> str:
+            return "—" if value is None else f"{value / 100:,.2f}"
+
+        def comparison(label, invoice_value, row_value) -> dict:
+            difference = (
+                None if row_value is None
+                else invoice_value - row_value
+            )
+            return {
+                "Field": label,
+                "Invoice": money(invoice_value),
+                "GSTR-2B": money(row_value),
+                "Difference (invoice − 2B)": (
+                    "—" if difference is None
+                    else f"{difference / 100:+,.2f}"
+                ),
+            }
+
+        def row_value(field):
+            return None if batch_row is None else batch_row[field]
+
+        st.dataframe(
+            [
+                comparison(
+                    "Taxable value (₹)",
+                    invoice["taxable_value"],
+                    row_value("taxable_value"),
+                ),
+                comparison("CGST (₹)", invoice["cgst"], row_value("cgst")),
+                comparison("SGST (₹)", invoice["sgst"], row_value("sgst")),
+                comparison("IGST (₹)", invoice["igst"], row_value("igst")),
+                comparison(
+                    "Total GST (₹)",
+                    invoice["total_gst"],
+                    row_value("total_gst"),
+                ),
+            ],
+            alt="Invoice versus GSTR-2B taxable value and tax components",
+            hide_index=True,
+        )
+        st.caption(
+            "Matching uses supplier GSTIN, invoice number and tax period. The "
+            "configured tolerance applies to total GST; component and taxable "
+            "value differences are review evidence, not an automatic decision."
+        )
+    if batch_row is not None:
+        with st.expander("GSTR-2B source row"):
+            st.json(batch_row, expanded=False)
 
 
 def page_followups() -> None:
@@ -2922,6 +2973,157 @@ def _render_webjs_demo(actor: str) -> None:
             st.rerun()
 
 
+def _provider_for_existing_delivery(row: dict):
+    if row["provider"] == delivery.PROVIDER_MOCK:
+        return delivery.MockDeliveryProvider(max_attempts=row["max_attempts"])
+    config = delivery.load_whatsapp_config()
+    if not config.ready:
+        return None
+    return delivery.WhatsAppCloudApiProvider(config)
+
+
+def _render_delivery_recovery(rows: list[dict]) -> None:
+    retry_rows = [row for row in rows if row["status"] == "RETRY_PENDING"]
+    unknown_rows = [row for row in rows if row["status"] == "UNKNOWN"]
+    if not retry_rows and not unknown_rows:
+        return
+    st.markdown("**Failure recovery**")
+    st.caption(
+        "Retries are manual and bounded; MILAAN has no background scheduler. "
+        "An UNKNOWN outcome is resolved only by an operator using verified "
+        "evidence from Meta, because the send may or may not have happened."
+    )
+    for row in retry_rows:
+        provider = _provider_for_existing_delivery(row)
+        with st.container(border=True):
+            st.markdown(
+                f"**Delivery #{row['id']}** · {row['supplier_name']} · "
+                f"`RETRY_PENDING` · attempt "
+                f"{row['attempt_count']}/{row['max_attempts']}"
+            )
+            st.caption(
+                f"Next allowed attempt: {row['next_attempt_at'] or 'now'} · "
+                f"Last error: {row['last_error_code'] or 'unknown'}"
+            )
+            if provider is None:
+                st.warning(
+                    "This delivery used the WhatsApp Cloud API, which is not "
+                    "configured right now. It cannot be retried until the "
+                    "credentials are restored."
+                )
+                continue
+            if row["provider"] != delivery.PROVIDER_MOCK:
+                consent = st.checkbox(
+                    "The recipient's opt-in still applies.",
+                    key=f"delivery_retry_optin_{row['id']}",
+                )
+                retry_confirm = st.checkbox(
+                    "I explicitly approve retrying this real send now.",
+                    key=f"delivery_retry_confirm_{row['id']}",
+                )
+                retry_ready = consent and retry_confirm
+            else:
+                retry_confirm = st.checkbox(
+                    "I confirm this simulated retry is intentional.",
+                    key=f"delivery_retry_confirm_{row['id']}",
+                )
+                retry_ready = retry_confirm
+            if st.button(
+                "Retry delivery",
+                key=f"delivery_retry_{row['id']}",
+                disabled=not retry_ready,
+            ):
+                try:
+                    record = delivery.retry_message_delivery(
+                        row["id"], provider
+                    )
+                except (
+                    delivery.DeliveryBlockedError,
+                    delivery.DeliveryConfigurationError,
+                ) as exc:
+                    st.warning(str(exc))
+                except Exception as exc:
+                    st.error(f"Retry failed: {exc}")
+                else:
+                    st.session_state["delivery_flash"] = (
+                        "success"
+                        if record["status"] == "SENT"
+                        else "warning",
+                        f"Retry for delivery #{record['id']} recorded status "
+                        f"{record['status']} (attempt "
+                        f"{record['attempt_count']}).",
+                    )
+                    st.rerun()
+
+    for row in unknown_rows:
+        with st.container(border=True):
+            st.markdown(
+                f"**Delivery #{row['id']}** · {row['supplier_name']} · "
+                f"`UNKNOWN` · attempt "
+                f"{row['attempt_count']}/{row['max_attempts']}"
+            )
+            st.caption(
+                "The provider may or may not have accepted this message. "
+                "Check Meta before resolving; MILAAN never guesses."
+            )
+            outcome = st.radio(
+                "Outcome confirmed in Meta",
+                options=["SENT_CONFIRMED", "NOT_SENT"],
+                format_func=lambda value: (
+                    "Meta accepted the message"
+                    if value == "SENT_CONFIRMED"
+                    else "Meta did not accept the message"
+                ),
+                key=f"delivery_resolve_outcome_{row['id']}",
+            )
+            resolved_by = st.text_input(
+                "Operator name",
+                key=f"delivery_resolve_by_{row['id']}",
+                max_chars=200,
+            )
+            note = st.text_area(
+                "Resolution note (what evidence was checked)",
+                key=f"delivery_resolve_note_{row['id']}",
+                max_chars=500,
+            )
+            provider_message_id = ""
+            if outcome == "SENT_CONFIRMED":
+                provider_message_id = st.text_input(
+                    "Provider message ID shown by Meta",
+                    key=f"delivery_resolve_msgid_{row['id']}",
+                    max_chars=200,
+                )
+            resolve_confirm = st.checkbox(
+                "I confirm this resolution reflects verified provider "
+                "evidence.",
+                key=f"delivery_resolve_confirm_{row['id']}",
+            )
+            if st.button(
+                "Record resolution",
+                key=f"delivery_resolve_{row['id']}",
+                disabled=not resolve_confirm,
+                type="primary",
+            ):
+                try:
+                    delivery.resolve_unknown(
+                        row["id"],
+                        outcome=outcome,
+                        resolved_by=resolved_by,
+                        note=note,
+                        provider_message_id=provider_message_id or None,
+                    )
+                except (ValueError, KeyError) as exc:
+                    st.warning(str(exc))
+                except Exception as exc:
+                    st.error(f"Resolution failed: {exc}")
+                else:
+                    st.session_state["delivery_flash"] = (
+                        "success",
+                        f"Delivery #{row['id']} resolved as {outcome}.",
+                    )
+                    st.rerun()
+
+
 def _render_delivery(actor: str) -> None:
     st.caption(
         "Inspect delivery evidence, run a simulated send, or send a real "
@@ -3130,11 +3332,22 @@ def _render_delivery(actor: str) -> None:
                     "WhatsApp Cloud API.",
                     key=f"delivery_approve_send_{delivery_draft_id}",
                 )
-                send_ready = opt_in and confirmed_send
+                template_ok = (
+                    not use_template or bool(template_name.strip())
+                )
+                send_ready = opt_in and confirmed_send and template_ok
                 if not send_ready:
-                    st.caption(
-                        "Both opt-in and explicit send approval are required."
-                    )
+                    if not template_ok:
+                        st.caption(
+                            "Enter the approved template name before sending, "
+                            "or clear the template checkbox to send free-form "
+                            "text inside the 24-hour window."
+                        )
+                    else:
+                        st.caption(
+                            "Both opt-in and explicit send approval are "
+                            "required."
+                        )
                 if st.button(
                     "Send via WhatsApp Cloud API",
                     key=f"delivery_real_send_{delivery_draft_id}",
@@ -3169,6 +3382,7 @@ def _render_delivery(actor: str) -> None:
                         st.rerun()
 
     _render_webjs_demo(actor)
+    _render_delivery_recovery(all_deliveries)
 
     st.markdown("**Delivery history**")
     if all_deliveries:
