@@ -124,9 +124,15 @@ class WhatsAppWebhookHandler(BaseHTTPRequestHandler):
         )
         self._send(status, body_out, content_type)
 
+    def log_request(self, code: Any = "-", size: Any = "-") -> None:
+        # Never log the raw request line: Meta's handshake puts the verify
+        # token in the query string, which must not reach any log.
+        path = self.path.split("?", 1)[0]
+        sys.stderr.write(f"webhook: {self.command} {path} {code}\n")
+
     def log_message(self, format: str, *args: Any) -> None:
-        # Access logs can contain query parameters; keep them out of logs.
-        sys.stderr.write("webhook: %s\n" % (format % args))
+        # Suppress default messages; they can embed the query string.
+        return
 
 
 def build_server(

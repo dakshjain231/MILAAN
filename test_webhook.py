@@ -491,6 +491,21 @@ class HandlerTests(WebhookTestCase):
         )
         self.assertEqual(status, 400)
 
+    def test_access_log_redacts_query_token(self):
+        import io
+        fake = type(
+            "FakeHandler", (), {
+                "command": "GET",
+                "path": "/webhook/whatsapp?hub.verify_token=" + VERIFY_TOKEN,
+            },
+        )()
+        buffer = io.StringIO()
+        with mock.patch("sys.stderr", buffer):
+            self.webhook.WhatsAppWebhookHandler.log_request(fake, 200)
+        output = buffer.getvalue()
+        self.assertNotIn(VERIFY_TOKEN, output)
+        self.assertIn("/webhook/whatsapp", output)
+
 
 if __name__ == "__main__":
     unittest.main()

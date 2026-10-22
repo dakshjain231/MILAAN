@@ -646,7 +646,7 @@ validation, reconciliation results, follow-up approval, or delivery state.
 .venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_webhook test_later_statement test_security test_realworld test_demo_workflow test_benchmark -v
 ```
 
-The same 302 tests (100 of them parameterized subtests) also run under
+The same 303 tests (100 of them parameterized subtests) also run under
 pytest, which is not a runtime dependency and can be installed only for
 development:
 
@@ -655,7 +655,7 @@ development:
 .venv/bin/python -m pytest -q
 ```
 
-302 tests: schema/constraints, seeding idempotency, legacy migrations
+303 tests: schema/constraints, seeding idempotency, legacy migrations
 (Task 1 suppliers, Task 2 validation-status CHECK, Task 7 additive
 approval snapshots), the full validation rule set (GSTIN format/checksum,
 money exactness, arithmetic, tax structure, rounding boundaries,
