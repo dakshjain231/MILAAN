@@ -30,6 +30,7 @@ import invoice_import  # noqa: E402
 import reconciliation  # noqa: E402
 import security  # noqa: E402
 import validation  # noqa: E402
+import webjs  # noqa: E402
 
 APP_CSS = """
 <style>
@@ -2786,6 +2787,144 @@ def _render_later_statement(actor: str) -> None:
         st.info("No later-statement checks recorded yet.")
 
 
+def _render_webjs_demo(actor: str, draft_id: int | None) -> None:
+    st.divider()
+    st.markdown("**WhatsApp Web local service (demo)**")
+    st.caption(
+        "Unofficial whatsapp-web.js bridge on localhost. Demo only: it sends "
+        "one plain-text preview to your configured consented test number, "
+        "never to a supplier automatically, and is not recorded as a supplier "
+        "delivery. It cannot prove delivery."
+    )
+    try:
+        config = webjs.load_webjs_config()
+        summary = config.safe_summary()
+    except Exception as exc:
+        st.error(f"Could not load WhatsApp Web configuration: {exc}")
+        return
+    if not summary["enabled"]:
+        st.info(
+            "Not enabled. Set MILAAN_WA_ENABLED=true, "
+            "MILAAN_WA_SERVICE_TOKEN (16+ characters) and "
+            "MILAAN_WA_TEST_RECIPIENT, then start the Node service. See "
+            "whatsapp_service/README.md."
+        )
+        return
+    try:
+        status = webjs.service_status(config)
+    except Exception as exc:
+        st.error(f"Could not query the WhatsApp Web service: {exc}")
+        return
+    status_cols = st.columns(3)
+    status_cols[0].caption(f"Service: **{status.get('status', 'unknown')}**")
+    status_cols[1].caption(
+        f"Ready: **{'yes' if status.get('ready') else 'no'}**"
+    )
+    status_cols[2].caption(
+        "Linked number: **"
+        + (status.get("phone_masked") or "not linked")
+        + "**"
+    )
+    if summary["problems"]:
+        st.warning("Configuration: " + ", ".join(summary["problems"]))
+    if status.get("status") == "misconfigured":
+        st.info("Fix the configuration above, then refresh.")
+        return
+    if status.get("status") == "unauthorized":
+        st.warning(
+            "The service rejected MILAAN_WA_SERVICE_TOKEN. Use the same "
+            "16+ character token for the service and this app."
+        )
+        return
+    if not status.get("reachable"):
+        st.info(
+            "Start the service: `cd whatsapp_service && npm install && "
+            "npm start`. It listens on 127.0.0.1 only."
+        )
+        return
+    if status.get("qr_available"):
+        try:
+            png = webjs.fetch_qr_png(config)
+        except Exception:
+            png = None
+        if png:
+            st.image(
+                png,
+                caption="Scan with WhatsApp → Linked devices",
+                width=240,
+            )
+        st.caption("QR codes expire; refresh if scanning fails.")
+    if st.button("Refresh WhatsApp Web status", key="webjs_refresh_status"):
+        st.rerun()
+    if not status.get("ready"):
+        st.info(
+            "The service is reachable but not linked yet. Scan the QR in "
+            "WhatsApp under Linked devices, then refresh."
+        )
+        return
+    if draft_id is None:
+        st.info("Approve a follow-up draft to preview the demo message.")
+        return
+    try:
+        draft = db.get_followup_draft(draft_id)
+        eligibility = db.get_delivery_eligibility(draft_id)
+    except Exception as exc:
+        st.error(f"Could not load draft evidence: {exc}")
+        return
+    if draft is None or not eligibility["eligible"]:
+        st.warning("Demo send blocked by the current draft evidence.")
+        return
+    st.caption("Preview of the frozen approved follow-up:")
+    st.text(eligibility["approved_text"] or "")
+    st.caption(
+        f"Test recipient: `{summary['test_recipient_masked']}`. The supplier "
+        "number is not used by this demo."
+    )
+    consent = st.checkbox(
+        "I confirm this test number is mine and consented to receive this "
+        "message.",
+        key=f"webjs_consent_{draft_id}",
+    )
+    approve = st.checkbox(
+        "I explicitly approve this single demo send.",
+        key=f"webjs_approve_{draft_id}",
+    )
+    if st.button(
+        "Send demo to test recipient",
+        key=f"webjs_send_{draft_id}",
+        disabled=not (consent and approve),
+        type="primary",
+    ):
+        try:
+            result = webjs.demo_test_send(
+                draft_id,
+                config=config,
+                actor=actor,
+                confirmed=approve,
+                opt_in_confirmed=consent,
+            )
+        except (webjs.WebJsBlocked, webjs.WebJsConfigurationError) as exc:
+            st.warning(str(exc))
+        except Exception as exc:
+            st.error(f"Demo send failed: {type(exc).__name__}")
+        else:
+            if result["outcome"] == delivery.OUTCOME_ACCEPTED:
+                st.session_state["delivery_flash"] = (
+                    "success",
+                    "Demo message accepted by the local service (message ID "
+                    f"{result['provider_message_id']}). This is not a supplier "
+                    "delivery and delivery is not verified.",
+                )
+            else:
+                st.session_state["delivery_flash"] = (
+                    "warning",
+                    f"Demo send outcome {result['outcome']} "
+                    f"({result.get('error_code') or 'no code'}). No delivery "
+                    "is claimed.",
+                )
+            st.rerun()
+
+
 def _render_delivery(actor: str) -> None:
     st.caption(
         "Inspect delivery evidence, run a simulated send, or send a real "
@@ -2867,6 +3006,7 @@ def _render_delivery(actor: str) -> None:
     approved_drafts = [
         row for row in all_followup_drafts if row["Status"] == "APPROVED"
     ]
+    selected_draft_id: int | None = None
     if not approved_drafts:
         st.info(
             "No approved follow-up drafts yet. Generate drafts and approve "
@@ -2884,6 +3024,7 @@ def _render_delivery(actor: str) -> None:
             key="delivery_draft",
         )
         delivery_draft_id = approved_labels[approved_label]
+        selected_draft_id = delivery_draft_id
         delivery_draft = db.get_followup_draft(delivery_draft_id)
         if delivery_draft is not None:
             eligibility = db.get_delivery_eligibility(delivery_draft_id)
@@ -3031,6 +3172,8 @@ def _render_delivery(actor: str) -> None:
                             "a delivery guarantee.",
                         )
                         st.rerun()
+
+    _render_webjs_demo(actor, selected_draft_id)
 
     st.markdown("**Delivery history**")
     if all_deliveries:
@@ -3307,6 +3450,42 @@ def page_settings() -> None:
                     "ownership. Free-form messages are only valid inside "
                     "WhatsApp's 24-hour window; outside it an approved "
                     "template is required."
+                )
+        with st.container(border=True):
+            st.subheader("WhatsApp Web service")
+            try:
+                wj_config = webjs.load_webjs_config()
+                wj_summary = wj_config.safe_summary()
+                wj_status = webjs.service_status(wj_config)
+            except Exception as exc:
+                st.error(f"Could not load WhatsApp Web status: {exc}")
+            else:
+                st.caption(
+                    "Enabled: "
+                    + ("yes" if wj_summary["enabled"] else "no")
+                    + " · service: **"
+                    + str(wj_status.get("status", "unknown"))
+                    + "**"
+                )
+                st.caption(
+                    "Ready: **"
+                    + ("yes" if wj_status.get("ready") else "no")
+                    + "** · linked number: **"
+                    + (wj_status.get("phone_masked") or "not linked")
+                    + "**"
+                )
+                st.caption(
+                    "Demo test recipient: "
+                    + (wj_summary["test_recipient_masked"] or "not set")
+                )
+                if wj_summary["problems"]:
+                    st.caption(
+                        "Configuration: " + ", ".join(wj_summary["problems"])
+                    )
+                st.caption(
+                    "QR scanning and the demo send live in Supplier "
+                    "follow-ups → Delivery. The supplier number is never "
+                    "used by the demo, and no delivery is claimed."
                 )
         with st.container(border=True):
             st.subheader("Validation")

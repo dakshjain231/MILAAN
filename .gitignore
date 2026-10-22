@@ -36,3 +36,10 @@ Thumbs.db
 .windsurf/
 .aider*
 
+# Node WhatsApp demo service and local session credentials
+whatsapp_service/node_modules/
+whatsapp_service/.wwebjs_auth/
+whatsapp_service/.wwebjs_cache/
+whatsapp_service/*.log
+.wwebjs_auth/
+.wwebjs_cache/

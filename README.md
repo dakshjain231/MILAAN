@@ -5,24 +5,29 @@ invoice data, validates fields, reconciles against GSTR-2B, explains
 mismatches, and prepares supplier follow-ups. It does not extract data
 from invoice images or PDFs.
 
-**Status:** Task 9 complete — Python + Streamlit app shell with SQLite
+**Status:** Task 11 complete — Python + Streamlit app shell with SQLite
 persistence, supplier/invoice data models, an idempotent synthetic
 demo-data seed, deterministic invoice validation, GSTR-2B CSV/XLSX
 staging import with a full row-level audit trail, deterministic
 invoice-to-GSTR-2B reconciliation with persisted run history, supplier
-follow-up **draft preparation with approval records**, and audited mock-only
-delivery simulation. The core
+follow-up **draft preparation with approval records**, audited mock-only
+delivery simulation, an opt-in Cloud API send path with a verified status
+webhook, and a separate localhost WhatsApp Web demo. The core
 invoice-to-follow-up workflow is covered by deterministic end-to-end
 tests, including the Streamlit approval path. Task 9 adds realistic
 synthetic compatibility fixtures, a measured benchmark with a baseline,
 and an isolated judge demo. Task 10 adds an opt-in WhatsApp Cloud API send
 path and an authenticated webhook receiver (`webhook.py`) for
-delivery-status and inbound-reply evidence. Real sending stays off unless
-the environment is explicitly configured, and every real send requires
-both confirmed recipient opt-in and a separate explicit send approval.
-Mock mode remains for workflow testing only. No real WhatsApp message is
-sent by the test suite. There is no AI diagnosis, no OCR pipeline, no GST
-filing and no recovery claim anywhere in the pipeline.
+delivery-status and inbound-reply evidence. Task 11 adds a separate,
+localhost-only `whatsapp-web.js` demo service with QR linking and a single
+consented test-recipient send. Real sending stays off unless the
+environment is explicitly configured, and every real send requires both
+confirmed recipient opt-in and a separate explicit send approval. The
+WhatsApp Web demo never sends to suppliers, never sends in bulk and never
+creates a supplier delivery record. Mock mode remains for workflow testing
+only. No real WhatsApp message is sent by the test suite. There is no AI
+diagnosis, no OCR pipeline, no GST filing and no recovery claim anywhere in
+the pipeline.
 
 ## GSTR-2B import (Task 4) — staging only
 
@@ -380,6 +385,59 @@ only post-send state. With the fully configured webhook, `DELIVERED`,
 `READ` and `FAILED` are recorded from verified events. None of this proves
 opt-in, ownership of a phone number, or actual reading by a human.
 
+## WhatsApp Web local demo service (Task 11)
+
+`whatsapp_service/` is a separate Node.js service built on the official
+[`whatsapp-web.js`](https://github.com/wwebjs/whatsapp-web.js) npm package
+(installed as a dependency; its source is not vendored). It exposes a
+localhost-only HTTP API used by the Streamlit delivery page for QR linking,
+connection status and a single demo send. The Cloud API path above is
+unchanged.
+
+**Safety boundaries.** The service binds only to `127.0.0.1` (or
+`localhost`/`::1`), requires a shared bearer token of 16+ characters, stores
+the linked-device session under the gitignored
+`whatsapp_service/.wwebjs_auth/`, and never logs tokens or session data. The
+demo previews one frozen approved follow-up and sends it **only** to
+`MILAAN_WA_TEST_RECIPIENT`, after two explicit checkboxes (test-number
+consent and send approval). It never uses the supplier's number, never runs
+during invoice processing, has no bulk mode, and creates no
+`message_deliveries` row — only a non-secret `webjs_demo_send` audit event.
+
+**macOS setup.** Node.js 18+ (tested with Node 22 on macOS), npm, and about
+500 MB for Chromium:
+
+```sh
+brew install node                 # if Node is not already installed
+cd whatsapp_service
+npm install                       # downloads Chromium via Puppeteer
+export MILAAN_WA_SERVICE_TOKEN="$(openssl rand -hex 32)"
+export MILAAN_WA_SERVICE_PORT=8801
+export MILAAN_WA_SERVICE_BIND=127.0.0.1
+npm start
+```
+
+In the Streamlit shell, export the **same** token plus the demo settings:
+
+```sh
+export MILAAN_WA_ENABLED=true
+export MILAAN_WA_SERVICE_TOKEN="<same token>"
+export MILAAN_WA_TEST_RECIPIENT="9198XXXXXXXX"
+.venv/bin/streamlit run app.py
+```
+
+Open **Settings** or **Supplier follow-ups → Delivery**, scan the QR under
+WhatsApp → Linked devices, then refresh. Full instructions and troubleshooting
+are in `whatsapp_service/README.md`.
+
+**Unverified by design.** No real WhatsApp Web session is linked in this
+repository, so no real send/delivery has been verified. An accepted request
+is not proof of delivery or reading. `whatsapp-web.js` is unofficial browser
+automation: it can violate WhatsApp's Terms of Service and may get a number
+limited or banned. Use a dedicated test number, never a business-critical
+one. Automated tests use a fake transport and never open a socket or contact
+WhatsApp.
+
 ## Real-world validation, benchmark and demo (Task 9)
 
 Task 9 does not change the matching rules. It adds reproducibility and a
@@ -643,10 +701,10 @@ validation, reconciliation results, follow-up approval, or delivery state.
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_webhook test_later_statement test_security test_realworld test_demo_workflow test_benchmark -v
+.venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_webhook test_webjs test_later_statement test_security test_realworld test_demo_workflow test_benchmark -v
 ```
 
-The same 303 tests (100 of them parameterized subtests) also run under
+The same 336 tests (100 of them parameterized subtests) also run under
 pytest, which is not a runtime dependency and can be installed only for
 development:
 
@@ -655,7 +713,7 @@ development:
 .venv/bin/python -m pytest -q
 ```
 
-303 tests: schema/constraints, seeding idempotency, legacy migrations
+336 tests: schema/constraints, seeding idempotency, legacy migrations
 (Task 1 suppliers, Task 2 validation-status CHECK, Task 7 additive
 approval snapshots), the full validation rule set (GSTIN format/checksum,
 money exactness, arithmetic, tax structure, rounding boundaries,
@@ -676,7 +734,10 @@ timeouts as `UNKNOWN`, manual resolution, terminal 4xx failures, secret
 redaction, FK cascade integrity, and mock/simulated behavior with fake
 transports. Webhook tests cover the challenge handshake, raw-body HMAC
 verification, duplicate-status no-ops, orphan statuses, inbound replies,
-and the rule that webhook processing never sends a message. End-to-end
+and the rule that webhook processing never sends a message. WhatsApp Web
+tests cover loopback/token configuration, status and QR parsing, provider
+outcome mapping, secret redaction, and the demo rule that a send needs both
+confirmations and goes only to the configured test recipient. End-to-end
 tests cover validation, import, reconciliation,
 draft generation, approval, exact and amount-mismatch exclusions, invalid
 invoice exclusion, duplicate-file imports, idempotent regeneration and
@@ -686,8 +747,10 @@ reproducibility, ground-truth statuses, baseline measurements and the
 absence of OCR/real-send claims. Streamlit AppTest exercises seed,
 validation, import, reconciliation, draft-generation, approval and
 mock-delivery flows via `streamlit.testing.v1` (AppTest, not a real
-browser). No test performs a real WhatsApp request or uses real taxpayer
-data.
+browser). No test performs a real WhatsApp request, starts Chromium, or
+uses real taxpayer data. The Node service has separate tests that run with
+Node's built-in runner (`cd whatsapp_service && npm test`); they exercise
+validation, auth, the state machine and HTTP routing with a fake client.
 
 Later-statement tests cover approved-draft gating, unique/duplicate/missing
 matches, amount differences, idempotency and source-record immutability.
@@ -701,6 +764,10 @@ matches, amount differences, idempotency and source-record immutability.
 | `db.py` | SQLite schema, migrations, seed, validation/import/reconciliation/follow-up/verification/delivery persistence |
 | `delivery.py` | WhatsApp config, HTTP provider, deterministic mock, idempotent delivery/retry/UNKNOWN orchestration, webhook signature/payload processing |
 | `webhook.py` | Stdlib HTTP receiver for the Meta verification handshake and signature-verified status/reply callbacks |
+| `webjs.py` | Loopback-only client for the WhatsApp Web demo service (status, QR, demo test send; no supplier delivery) |
+| `whatsapp_service/` | Separate Node.js `whatsapp-web.js` demo service: localhost API, QR/session, tests and macOS setup |
+| `test_webhook.py` | Webhook signature/challenge/status/reply and handler tests |
+| `test_webjs.py` | WhatsApp Web config, status/QR, outcome-mapping, demo-send and UI tests |
 | `validation.py` | Pure deterministic invoice/GSTIN validation service |
 | `invoice_import.py` | CSV/XLSX purchase-invoice parser, normalized columns and downloadable template |
 | `gstr2b.py` | Pure GSTR-2B CSV/XLSX parser (normalized schema) |
