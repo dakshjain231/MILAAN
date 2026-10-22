@@ -30,8 +30,9 @@ DATABASE_PATH="$PWD/demo/milaan_demo.db" \
   .venv/bin/streamlit run app.py
 ```
 
-Open the URL Streamlit prints (normally `http://localhost:8501`). Confirm
-the page shows the database file path ending in `demo/milaan_demo.db`.
+Open the URL Streamlit prints (normally `http://localhost:8501`). Open the
+**Settings** page and confirm the database path ends in
+`demo/milaan_demo.db`.
 
 **Safety:** do not configure WhatsApp credentials for this demo. Do not
 click a send action. The delivery section remains disabled or simulated.

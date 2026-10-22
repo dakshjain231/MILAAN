@@ -1017,6 +1017,11 @@ h2 {
   font-size: 0.94em;
 }
 
+.needs-review.is-blocked {
+  border-bottom: 2px solid #b4690e;
+  font-weight: 600;
+}
+
 .legal-back {
   display: inline-flex;
   margin-top: 40px;

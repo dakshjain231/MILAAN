@@ -507,11 +507,26 @@ of environment settings; only clearly labelled mock records are available.
 .venv/bin/streamlit run app.py
 ```
 
-Then open http://localhost:8501. The page shows the active database path, a
-**Demo data** section (idempotent seeding), an
-**Invoice validation** section with a "Validate all invoices" button,
-a **GSTR-2B import** section, a **Reconciliation** section, a
-**Supplier follow-ups** section, and a mock-only delivery history section.
+Then open http://localhost:8501. The app uses `st.navigation` with a left
+sidebar; each page has its own URL:
+
+- **Dashboard** (`/`) - workspace counts, GSTR-2B evidence, and an
+  attention table of invoices that need action.
+- **Purchase invoices** (`/purchase-invoices`) - CSV/XLSX import, template
+  download, "Validate all invoices", and validation results by tab.
+- **GSTR-2B import** (`/gstr2b-import`) - stage a GSTR-2B file, batch
+  history, and row-level issues.
+- **Reconciliation** (`/reconciliation`) - select a batch, set a paise
+  tolerance (0 = exact), run reconciliation, and inspect run history.
+- **Mismatches** (`/mismatches`) - invoice-level evidence for
+  non-matched results in the selected run.
+- **Follow-ups** (`/follow-ups`) - eligibility groups, draft generation,
+  edit/approve/skip, and later-statement verification.
+- **Suppliers** (`/suppliers`), **Audit log** (`/audit-log`) and
+  **Settings** (`/settings`) - directory, event trail, and workspace
+  status including the isolated demo workspace and mock-only delivery
+  history.
+
 Nothing is transmitted by the app.
 
 To import a GSTR-2B file: prepare a CSV/XLSX using the nine-column
@@ -566,10 +581,19 @@ validation, reconciliation results, follow-up approval, or delivery state.
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest test_db test_validation test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_later_statement test_security test_realworld test_benchmark -v
+.venv/bin/python -m unittest test_db test_validation test_invoice_import test_gstr2b test_reconciliation test_followups test_e2e test_delivery test_later_statement test_security test_realworld test_benchmark test_demo_workflow -v
 ```
 
-259 tests: schema/constraints, seeding idempotency, legacy migrations
+The same 272 tests (100 of them parameterized subtests) also run under
+pytest, which is not a runtime dependency and can be installed only for
+development:
+
+```bash
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m pytest -q
+```
+
+272 tests: schema/constraints, seeding idempotency, legacy migrations
 (Task 1 suppliers, Task 2 validation-status CHECK, Task 7 additive
 approval snapshots), the full validation rule set (GSTIN format/checksum,
 money exactness, arithmetic, tax structure, rounding boundaries,
@@ -607,19 +631,24 @@ matches, amount differences, idempotency and source-record immutability.
 
 | File | Purpose |
 | --- | --- |
-| `app.py` | Streamlit entry point (status, demo data, validation, import, reconcile, drafts, later verification, delivery) |
+| `app.py` | Streamlit entry point and page renderers; `main()` wires the `st.navigation` sidebar |
+| `pages/` | Thin page wrappers (dashboard, purchase invoices, GSTR-2B, reconciliation, mismatches, follow-ups, suppliers, audit log, settings) |
 | `db.py` | SQLite schema, migrations, seed, validation/import/reconciliation/follow-up/verification/delivery persistence |
 | `delivery.py` | WhatsApp config, HTTP provider, deterministic mock, idempotent delivery/retry/UNKNOWN orchestration |
 | `validation.py` | Pure deterministic invoice/GSTIN validation service |
+| `invoice_import.py` | CSV/XLSX purchase-invoice parser, normalized columns and downloadable template |
 | `gstr2b.py` | Pure GSTR-2B CSV/XLSX parser (normalized schema) |
 | `reconciliation.py` | Pure deterministic invoice-to-GSTR-2B matcher |
 | `followups.py` | Pure draft planning, eligibility and neutral message wording |
+| `demo_workflow.py` | In-app synthetic demo workspace (seed, validate, import, reconcile; no drafts or sends) |
 | `test_db.py` | DB + Streamlit AppTest suite |
 | `test_validation.py` | Validation rules, DB integration, migration tests |
+| `test_invoice_import.py` | Invoice CSV/XLSX parsing, template and persistence tests |
 | `test_gstr2b.py` | GSTR-2B parsing, persistence, rollback tests |
 | `test_reconciliation.py` | Matching, normalization, persistence, run-history tests |
 | `test_followups.py` | Eligibility, drafts, approval/skip, history, no-send tests |
 | `test_e2e.py` | Core invoice-to-follow-up workflow and Streamlit approval tests |
+| `test_demo_workflow.py` | Demo workspace seeding, counts and no-send tests |
 | `test_delivery.py` | Config, provider, retry, idempotency, snapshot, UI and no-send tests |
 | `test_later_statement.py` | Later-batch evidence checks for approved follow-up drafts |
 | `test_security.py` | Production access policy and operational audit tests |
