@@ -552,8 +552,8 @@ def create_app() -> Flask:
     def favicon():
         return Response(
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34">'
-            '<path d="M4 7c5 1 10 6 12 20C10 25 5 18 4 7z" fill="#0d3b32"/>'
-            '<path d="M30 7c-5 1-10 6-12 20 6-2 11-9 12-20z" fill="#155447"/>'
+            '<path d="M4 7c5 1 10 6 12 20C10 25 5 18 4 7z" fill="#4f46e5"/>'
+            '<path d="M30 7c-5 1-10 6-12 20 6-2 11-9 12-20z" fill="#818cf8"/>'
             "</svg>",
             mimetype="image/svg+xml",
         )

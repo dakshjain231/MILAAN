@@ -17,6 +17,7 @@ __pycache__/
 backups/
 logs/
 .run/
+.last_backup_path
 
 # SQLite Database
 *.db
