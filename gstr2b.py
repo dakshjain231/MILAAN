@@ -282,10 +282,94 @@ def _read_xlsx(content: bytes) -> tuple[list[str], list[list[Any]]]:
     return [_cell_text(cell) for cell in rows[0]], rows[1:]
 
 
+def _read_json(content: bytes) -> tuple[list[str], list[list[Any]]]:
+    try:
+        data = json.loads(content.decode("utf-8-sig"))
+    except Exception as exc:
+        raise ValueError(f"JSON file is not valid JSON text: {exc}") from exc
+    if not data:
+        raise ValueError("file is empty")
+
+    b2b_list = None
+    if isinstance(data, dict):
+        if "data" in data and isinstance(data["data"], dict) and "b2b" in data["data"]:
+            b2b_list = data["data"]["b2b"]
+        elif "b2b" in data and isinstance(data["b2b"], list):
+            b2b_list = data["b2b"]
+        elif "rows" in data and isinstance(data["rows"], list):
+            data = data["rows"]
+        elif "invoices" in data and isinstance(data["invoices"], list):
+            data = data["invoices"]
+
+    if b2b_list is not None:
+        canonical_headers = [
+            "supplier_gstin", "invoice_number", "invoice_date", "tax_period",
+            "taxable_value", "cgst", "sgst", "igst", "total_gst"
+        ]
+        rows = []
+        for supplier in b2b_list:
+            ctin = str(supplier.get("ctin") or supplier.get("supplier_gstin") or "")
+            for inv in supplier.get("inv", []):
+                inum = str(inv.get("inum") or inv.get("invoice_number") or "")
+                idt = str(inv.get("idt") or inv.get("invoice_date") or "")
+                if re.match(r"^\d{2}-\d{2}-\d{4}$", idt):
+                    d, m, y = idt.split("-")
+                    idt = f"{y}-{m}-{d}"
+                elif re.match(r"^\d{2}/\d{2}/\d{4}$", idt):
+                    d, m, y = idt.split("/")
+                    idt = f"{y}-{m}-{d}"
+
+                period = str(inv.get("tax_period") or inv.get("period") or "")
+                if not period and len(idt) >= 7:
+                    period = idt[:7]
+
+                txval = 0.0
+                camt = 0.0
+                samt = 0.0
+                iamt = 0.0
+                items = inv.get("items", [])
+                if items:
+                    for itm in items:
+                        det = itm.get("itm_det", itm)
+                        txval += float(det.get("txval", 0.0))
+                        camt += float(det.get("camt", 0.0))
+                        samt += float(det.get("samt", 0.0))
+                        iamt += float(det.get("iamt", 0.0))
+                else:
+                    txval = float(inv.get("val", 0.0))
+                    camt = float(inv.get("camt", 0.0))
+                    samt = float(inv.get("samt", 0.0))
+                    iamt = float(inv.get("iamt", 0.0))
+
+                tot_gst = camt + samt + iamt
+                rows.append([
+                    ctin, inum, idt, period,
+                    f"{txval:.2f}", f"{camt:.2f}", f"{samt:.2f}", f"{iamt:.2f}", f"{tot_gst:.2f}"
+                ])
+        if not rows:
+            raise ValueError("file contains a header but no data rows")
+        return canonical_headers, rows
+
+    if isinstance(data, list):
+        if not data:
+            raise ValueError("file is empty")
+        if not isinstance(data[0], dict):
+            raise ValueError("JSON array must contain objects")
+        headers = []
+        for item in data:
+            for k in item.keys():
+                if k not in headers:
+                    headers.append(k)
+        rows = [[item.get(h, "") for h in headers] for item in data]
+        return headers, rows
+
+    raise ValueError("JSON file must be an array of invoice records or standard GSTR-2B export")
+
+
 def read_tabular_file(
     content: bytes, file_name: str
 ) -> tuple[list[str], list[list[Any]], str]:
-    """Read a CSV/XLSX upload and return headers, data rows and format.
+    """Read a CSV/XLSX/JSON upload and return headers, data rows and format.
 
     Shared by the GSTR-2B and purchase-invoice importers so both apply the
     same safe decoding, blank-row handling and extension checks.
@@ -297,6 +381,9 @@ def read_tabular_file(
     if extension == ".xlsx":
         headers, data_rows = _read_xlsx(content)
         return headers, data_rows, "xlsx"
+    if extension == ".json":
+        headers, data_rows = _read_json(content)
+        return headers, data_rows, "json"
     if extension == ".pdf":
         raise ValueError(
             "PDF GSTR-2B is not supported. Download the GST portal Excel "
@@ -307,7 +394,7 @@ def read_tabular_file(
             "Legacy .xls GSTR-2B files are not supported. Save the file as "
             ".xlsx or CSV and import again."
         )
-    raise ValueError("unsupported file type; expected .csv or .xlsx")
+    raise ValueError("unsupported file type; expected .csv, .xlsx or .json")
 
 
 def normalize_header(value: Any) -> str:

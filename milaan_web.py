@@ -1145,7 +1145,43 @@ def create_app() -> Flask:
             headers={"Content-Disposition": "attachment; filename=milaan-invoice-template.csv"},
         )
 
+    @app.post("/api/data/clear")
+    def clear_data():
+        payload = request.get_json(silent=True) or {}
+        if not payload.get("confirm"):
+            return _error("Explicit confirmation is required to clear all data.", 400)
+        try:
+            db.clear_all_data()
+            return jsonify({"ok": True, "message": "All data cleared successfully."})
+        except Exception as exc:
+            return _error(f"Failed to clear data: {exc}", 500)
+
+    @app.route("/api/settings/organization", methods=["GET", "POST"])
+    def organization_settings():
+        if request.method == "POST":
+            payload = request.get_json(silent=True) or {}
+            for field in ("company_name", "gstin", "email", "phone"):
+                if field in payload:
+                    db.set_system_meta(f"org_{field}", str(payload[field]).strip())
+            return jsonify({
+                "ok": True,
+                "message": "Organization details saved successfully.",
+                "organization": {
+                    "company_name": db.get_system_meta("org_company_name", "Demo Business Pvt Ltd"),
+                    "gstin": db.get_system_meta("org_gstin", "29ABCDE1234F1Z5"),
+                    "email": db.get_system_meta("org_email", "demo@business.com"),
+                    "phone": db.get_system_meta("org_phone", "+91 98765 43210"),
+                }
+            })
+        return jsonify({
+            "company_name": db.get_system_meta("org_company_name", "Demo Business Pvt Ltd"),
+            "gstin": db.get_system_meta("org_gstin", "29ABCDE1234F1Z5"),
+            "email": db.get_system_meta("org_email", "demo@business.com"),
+            "phone": db.get_system_meta("org_phone", "+91 98765 43210"),
+        })
+
     return app
+
 
 
 def main() -> None:

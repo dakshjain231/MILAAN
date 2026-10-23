@@ -55,21 +55,49 @@ class PrimaryUITestCase(unittest.TestCase):
         for label in (
             "MILAAN",
             "Dashboard",
-            "Bills",
-            "GSTR-2B",
+            "Purchase Invoices",
+            "GSTR-2B Import",
             "Reconciliation",
-            "Exceptions",
-            "Suppliers",
-            "Supplier follow-ups",
-            "Conversation",
-            "Agent trace",
-            "Audit &amp; settings",
+            "Supplier Follow-ups",
+            "Settings",
             "Download accountant workbook",
-            "Recovery status",
         ):
             self.assertIn(label, body)
+        # Verify exactly the 6 destinations are present in the sidebar
+        for page in ("dashboard", "invoices", "gstr2b", "reconciliation", "followups", "settings"):
+            self.assertEqual(body.count(f'data-page="{page}"'), 1)
+        # Verify obsolete destinations are not in the sidebar navigation
+        for obsolete in ('data-page="exceptions"', 'data-page="conversation"', 'data-page="trace"', 'data-page="audit"'):
+            self.assertNotIn(obsolete, body)
         self.assertNotIn("Streamlit", body)
         self.assertEqual(self.client.get("/_stcore/health").status_code, 404)
+
+    def test_organization_settings_and_clear_data(self):
+        # Test default settings
+        res = self.client.get("/api/settings/organization")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["company_name"], "Demo Business Pvt Ltd")
+
+        # Test updating settings
+        update_res = self.client.post(
+            "/api/settings/organization",
+            json={"company_name": "Updated Org", "phone": "+91 91234 56789"},
+        )
+        self.assertEqual(update_res.status_code, 200)
+        self.assertEqual(update_res.get_json()["organization"]["company_name"], "Updated Org")
+
+        # Test clear data without confirmation
+        fail_clear = self.client.post("/api/data/clear", json={})
+        self.assertEqual(fail_clear.status_code, 400)
+
+        # Test clear data with confirmation
+        self.seed()
+        clear_res = self.client.post("/api/data/clear", json={"confirm": True})
+        self.assertEqual(clear_res.status_code, 200)
+        state = self.client.get("/api/state").get_json()
+        self.assertEqual(state["summary"]["invoices"], 0)
+
 
     def test_state_uses_real_data_and_masks_phones(self):
         self.seed()

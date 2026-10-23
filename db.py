@@ -3544,3 +3544,39 @@ def get_incoming_replies(limit: int = 100) -> list[dict]:
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def clear_all_data() -> dict:
+    """Clear all uploaded invoices, GSTR-2B imports, reconciliation runs, and follow-ups."""
+    with db() as conn:
+        conn.execute("DELETE FROM message_replies")
+        conn.execute("DELETE FROM message_status_events")
+        conn.execute("DELETE FROM message_deliveries")
+        conn.execute("DELETE FROM followup_verifications")
+        conn.execute("DELETE FROM followup_draft_events")
+        conn.execute("DELETE FROM followup_draft_invoices")
+        conn.execute("DELETE FROM followup_drafts")
+        conn.execute("DELETE FROM reconciliation_results")
+        conn.execute("DELETE FROM reconciliation_runs")
+        conn.execute("DELETE FROM gstr2b_rows")
+        conn.execute("DELETE FROM gstr2b_imports")
+        conn.execute("DELETE FROM invoices")
+        conn.execute("DELETE FROM suppliers")
+        conn.commit()
+    return {"cleared": True}
+
+
+def get_system_meta(key: str, default: str | None = None) -> str | None:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM system_meta WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_system_meta(key: str, value: str) -> None:
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO system_meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        conn.commit()
