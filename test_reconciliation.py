@@ -352,19 +352,22 @@ class DatabaseTestCase(unittest.TestCase):
         status="valid",
     ):
         taxable = 1_250_000
+        cgst = total_gst // 2
+        sgst = total_gst - cgst
         with db.db() as conn:
             cursor = conn.execute(
                 """INSERT INTO invoices
                        (supplier_id, invoice_number, invoice_date, tax_period,
                         taxable_value, gst_rate, cgst, sgst, igst, total_gst,
                         invoice_total, validation_status)
-                   VALUES (?, ?, '2026-03-05', ?, ?, 18, ?, 0, 0, ?, ?, ?)""",
+                   VALUES (?, ?, '2026-03-05', ?, ?, 18, ?, ?, 0, ?, ?, ?)""",
                 (
                     supplier_id,
                     number,
                     period,
                     taxable,
-                    total_gst,
+                    cgst,
+                    sgst,
                     total_gst,
                     taxable + total_gst,
                     status,
@@ -550,12 +553,23 @@ class PersistenceTests(DatabaseTestCase):
         summary = db.reconcile_gstr2b_import(batch_id)
         self.assertEqual(summary["needs_review_count"], 2)
         results = db.get_reconciliation_results(summary["run_id"])
+        invoice_results = [
+            row for row in results
+            if row["Status"] != reconciliation.STATUS_IN_2B_NOT_IN_BOOKS
+        ]
         self.assertEqual(
-            [row["Status"] for row in results], ["NEEDS_REVIEW", "NEEDS_REVIEW"]
+            [row["Status"] for row in invoice_results],
+            ["NEEDS_REVIEW", "NEEDS_REVIEW"],
         )
-        for row in results:
+        for row in invoice_results:
             self.assertFalse(row["2B row"])
             self.assertIn("DUPLICATE_PURCHASE_INVOICE", row["Reasons"])
+        orphans = [
+            row for row in results
+            if row["Status"] == reconciliation.STATUS_IN_2B_NOT_IN_BOOKS
+        ]
+        self.assertEqual(len(orphans), 1)
+        self.assertIn("IN_2B_NOT_IN_BOOKS", orphans[0]["Reasons"])
 
     def test_foreign_keys_and_status_checks(self):
         supplier_id = self.add_supplier()
@@ -606,25 +620,3 @@ class PersistenceTests(DatabaseTestCase):
         finally:
             conn.close()
 
-    def test_ui_reconcile_button_reports_a_real_run(self):
-        from streamlit.testing.v1 import AppTest
-
-        supplier_id = self.add_supplier()
-        self.add_invoice(supplier_id)
-        self.import_rows([gstr2b_row()])
-
-        at = AppTest.from_file(
-            str(Path(__file__).parent / "app.py"), default_timeout=30
-        )
-        at.run()
-        self.assertEqual(at.exception, [])
-        at.switch_page("pages/4_reconciliation.py").run()
-        self.assertEqual(at.exception, [])
-        at.button(key="reconcile").click().run()
-        self.assertEqual(at.exception, [])
-        self.assertTrue(
-            any("Run #" in message.value for message in at.success),
-            [message.value for message in at.success],
-        )
-        metrics = {metric.label: str(metric.value) for metric in at.metric}
-        self.assertEqual(metrics.get("Matched"), "1 · Rs 2250.00")

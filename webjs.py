@@ -297,7 +297,7 @@ def fetch_qr_png(config: WebJsConfig | None = None) -> bytes | None:
 class WhatsAppWebJsProvider:
     """Provider-shaped adapter for the local whatsapp-web.js service.
 
-    Kept out of ``DELIVERY_PROVIDERS`` on purpose: the Streamlit demo calls
+    Kept out of ``DELIVERY_PROVIDERS`` on purpose: the primary UI calls
     :func:`demo_test_send` directly so a message can only go to the consented
     test recipient, never to a supplier through this channel.
     """

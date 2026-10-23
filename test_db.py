@@ -393,61 +393,6 @@ class LegacyMigrationTests(unittest.TestCase):
         self.assertIsNone(rows[0]["contact_phone"])
 
 
-class AppSmokeTests(unittest.TestCase):
-    """Exercises app.py's real Streamlit flow, including clicking the seed
-    button via streamlit.testing.v1.AppTest."""
-
-    def setUp(self):
-        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
-        self._old_env = os.environ.get("DATABASE_PATH")
-        os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
-
-    def tearDown(self):
-        if self._old_env is None:
-            os.environ.pop("DATABASE_PATH", None)
-        else:
-            os.environ["DATABASE_PATH"] = self._old_env
-        shutil.rmtree(self._tmp, ignore_errors=True)
-
-    def test_app_runs_without_exception(self):
-        from streamlit.testing.v1 import AppTest
-
-        at = AppTest.from_file(str(Path(__file__).parent / "app.py"),
-                               default_timeout=30)
-        at.run()
-        self.assertEqual(at.exception, [])
-
-    def test_seed_button_twice_does_not_duplicate(self):
-        from streamlit.testing.v1 import AppTest
-
-        at = AppTest.from_file(str(Path(__file__).parent / "app.py"),
-                               default_timeout=30)
-        at.run()
-        self.assertEqual(at.exception, [])
-
-        seed = at.button(key="seed_demo")
-        self.assertIsNotNone(seed)
-        seed.click().run()
-        self.assertEqual(at.exception, [])
-        # Success message on first click.
-        self.assertTrue(len(at.success) == 1, at.success[0].value if at.success else "no message")
-
-        at.button(key="seed_demo").click().run()
-        self.assertEqual(at.exception, [])
-        # Metrics show the seeded values after both clicks.
-        # Metrics show the seeded values after both clicks (streamlit
-        # exposes metric values as display strings).
-        metrics = {m.label: str(m.value) for m in at.metric}
-        self.assertEqual(metrics.get("Invoices"), "6")
-
-        import db
-        totals = db.get_totals()
-        self.assertEqual(totals["invoice_count"], 6)
-        self.assertEqual(totals["total_gst_paise"], EXPECTED_SEED_TOTAL_GST_PAISE)
-
-        with db.db() as conn:
-            n_suppliers = conn.execute("SELECT COUNT(*) FROM suppliers").fetchone()[0]
-        self.assertEqual(n_suppliers, 3)
 
 
 if __name__ == "__main__":

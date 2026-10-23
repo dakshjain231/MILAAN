@@ -1,4 +1,4 @@
-"""Real-world-style compatibility checks and Streamlit freshness checks.
+"""Real-world-style normalized-data compatibility and freshness checks.
 
 Run: .venv/bin/python -m unittest test_realworld -v
 
@@ -186,52 +186,3 @@ class DatabaseTestCase(unittest.TestCase):
             ).lastrowid
 
 
-class StreamlitFreshnessTests(DatabaseTestCase):
-    def test_import_and_reconcile_refresh_visible_totals(self):
-        from streamlit.testing.v1 import AppTest
-
-        supplier = self.add_supplier("Synthetic Fixture Traders", GSTIN_A)
-        invoice_id = self.add_invoice(
-            supplier, "INV-FIX-001", 1_250_000, 225_000
-        )
-        self.assertEqual(db.revalidate_invoice(invoice_id).status, "valid")
-        self.assertEqual(db.get_gstr2b_imports(), [])
-        self.assertEqual(db.get_reconciliation_runs(), [])
-
-        at = AppTest.from_file(
-            str(Path(__file__).parent / "app.py"), default_timeout=30
-        )
-        at.run()
-        self.assertEqual(at.exception, [])
-        at.switch_page("pages/3_gstr2b_import.py").run()
-        self.assertEqual(at.exception, [])
-
-        content = (FIXTURES / "valid_normalized.csv").read_bytes()
-        uploader = next(iter(at.file_uploader))
-        uploader.set_value(
-            ("valid_normalized.csv", content, "text/csv")
-        ).run()
-        self.assertEqual(at.exception, [])
-        at.button(key="gstr2b_import").click().run()
-        self.assertEqual(at.exception, [])
-        self.assertEqual(len(db.get_gstr2b_imports()), 1)
-        self.assertTrue(
-            any("Batch #1 imported" in item.value for item in at.success),
-            [item.value for item in at.success],
-        )
-
-        at.switch_page("pages/4_reconciliation.py").run()
-        self.assertEqual(at.exception, [])
-        at.button(key="reconcile").click().run()
-        self.assertEqual(at.exception, [])
-        runs = db.get_reconciliation_runs()
-        self.assertEqual(len(runs), 1)
-        self.assertEqual(runs[0]["Matched"], 1)
-        self.assertEqual(runs[0]["Missing from 2B"], 0)
-        metrics = {item.label: str(item.value) for item in at.metric}
-        self.assertIn("Matched", metrics)
-        self.assertTrue(metrics["Matched"].startswith("1 "))
-        self.assertNotIn(
-            "No reconciliation runs yet.",
-            [item.value for item in at.info],
-        )

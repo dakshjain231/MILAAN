@@ -2,10 +2,10 @@
 
 ## Sources and repository state
 
-- The workspace contribution is the existing Streamlit/SQLite application in
-  this directory. At inspection, every project file was untracked, `master`
-  had an all-zero unborn `HEAD`, and there were no remotes or additional
-  worktrees. There is no common Git base to compare.
+- The workspace contribution began as the existing Streamlit/SQLite
+  application in this directory. At inspection, every project file was
+  untracked, `master` had an all-zero unborn `HEAD`, and there were no remotes
+  or additional worktrees. There is no common Git base to compare.
 - The user-provided `godsplan-main.zip` was inspected and safely extracted to
   a temporary directory for static review. It contains a separate FastAPI,
   SQLite and vanilla-JavaScript implementation. The archive has no Git
@@ -13,10 +13,12 @@
 
 ## Integration decisions
 
-- Kept the current Streamlit application and its schema as the unified
-  implementation. It already covers validated invoice intake, strict
-  normalized GSTR-2B CSV/XLSX parsing, exact paise reconciliation, audited
-  follow-up drafts and approval, and fail-closed delivery history.
+- Kept the existing SQLite schema and business logic as the unified backend.
+  The final consolidation replaced the Streamlit frontend with the custom
+  Flask workspace in `milaan_web.py` + `agent/web/primary.html`. The retained
+  backend already covers validated invoice intake, strict normalized GSTR-2B
+  CSV/XLSX parsing, exact paise reconciliation, audited follow-up drafts and
+  approval, and fail-closed delivery history.
 - Adapted the archive's later-statement follow-up idea in the current data
   model. A user can compare an approved draft with another imported batch;
   results are separately audited, duplicate matches go to review, amount

@@ -9,6 +9,7 @@ network, no real token is used, and no real message is sent.
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -989,6 +990,44 @@ class SchemaTests(DatabaseTestCase):
             problems = conn.execute("PRAGMA foreign_key_check").fetchall()
         self.assertEqual(problems, [])
 
+    def test_init_repairs_followup_fks_after_legacy_rename(self):
+        path = db.get_database_path()
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("PRAGMA legacy_alter_table = OFF")
+            conn.execute(
+                "ALTER TABLE reconciliation_results "
+                "RENAME TO reconciliation_results_legacy"
+            )
+            conn.execute(
+                "ALTER TABLE reconciliation_runs "
+                "RENAME TO reconciliation_runs_legacy"
+            )
+            conn.execute("DROP TABLE reconciliation_results_legacy")
+            conn.execute("DROP TABLE reconciliation_runs_legacy")
+            conn.commit()
+            followup_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name = 'followup_drafts'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertIn("reconciliation_runs_legacy", followup_sql)
+
+        db.init_db()
+
+        with db.db() as conn:
+            fk_names = {
+                row["table"]
+                for row in conn.execute(
+                    "PRAGMA foreign_key_list(followup_drafts)"
+                ).fetchall()
+            }
+            check = conn.execute("PRAGMA foreign_key_check").fetchall()
+        self.assertIn("reconciliation_runs", fk_names)
+        self.assertNotIn("reconciliation_runs_legacy", fk_names)
+        self.assertEqual(check, [])
+
     def test_additive_migration_restores_approval_snapshot_columns(self):
         with db.db() as conn:
             for column in (
@@ -1035,86 +1074,6 @@ class SchemaTests(DatabaseTestCase):
         self.assertEqual(remaining, 0)
 
 
-class DeliveryUITests(DatabaseTestCase):
-    def app(self):
-        from streamlit.testing.v1 import AppTest
-
-        at = AppTest.from_file(
-            str(Path(__file__).parent / "app.py"), default_timeout=30
-        )
-        at.run()
-        at.switch_page("pages/6_followups.py").run()
-        return at
-
-    def test_ui_does_not_send_on_render_or_approval(self):
-        case = self.approved_draft()
-        at = self.app()
-        self.assertEqual(at.exception, [])
-        self.assertEqual(self.delivery_count(), 0)
-        self.assertEqual(
-            db.get_followup_draft(case["draft_id"])["status"], "APPROVED"
-        )
-        captions = " ".join(item.value for item in at.caption)
-        self.assertIn("approval alone sends nothing", captions)
-
-    def test_ui_requires_confirmation_then_records_mock_delivery(self):
-        case = self.approved_draft()
-        draft_id = case["draft_id"]
-        with mock.patch("requests.post") as post:
-            at = self.app()
-            self.assertEqual(at.exception, [])
-            at.checkbox(key=f"delivery_confirm_{draft_id}").check().run()
-            at.button(key=f"delivery_send_{draft_id}").click().run()
-        self.assertEqual(at.exception, [])
-        post.assert_not_called()
-
-        records = db.get_message_deliveries(draft_id=draft_id)
-        self.assertEqual(len(records), 1)
-        self.assertEqual(records[0]["provider"], "mock")
-        self.assertEqual(records[0]["status"], "SENT")
-        self.assertTrue(
-            any(
-                "No external message was sent" in item.value
-                for item in at.success
-            ),
-            [item.value for item in at.success],
-        )
-
-    def test_ui_real_mode_is_disabled_without_configuration(self):
-        self.approved_draft()
-        with mock.patch.dict(os.environ, {"WHATSAPP_ENABLED": "false"}):
-            at = self.app()
-            at.radio(key="delivery_mode").set_value(
-                "WhatsApp Cloud API (real)"
-            ).run()
-        self.assertEqual(at.exception, [])
-        warnings = " ".join(item.value for item in at.warning)
-        self.assertIn("Real delivery is not configured", warnings)
-        self.assertEqual(self.delivery_count(), 0)
-
-    def test_ui_real_send_requires_opt_in_and_approval(self):
-        self.approved_draft()
-        configured = {
-            "WHATSAPP_ENABLED": "true",
-            "WHATSAPP_ACCESS_TOKEN": "test-token-only",
-            "WHATSAPP_PHONE_NUMBER_ID": "1234567890",
-            "WHATSAPP_API_VERSION": "v99.0",
-        }
-        with mock.patch.dict(os.environ, configured):
-            at = self.app()
-            self.assertEqual(at.exception, [])
-            at.radio(key="delivery_mode").set_value(
-                "WhatsApp Cloud API (real)"
-            ).run()
-
-        self.assertEqual(at.exception, [])
-        send_buttons = [
-            item for item in at.button
-            if "Send via WhatsApp Cloud API" in item.label
-        ]
-        self.assertEqual(len(send_buttons), 1)
-        self.assertTrue(send_buttons[0].disabled)
-        self.assertEqual(self.delivery_count(), 0)
 
 
 if __name__ == "__main__":

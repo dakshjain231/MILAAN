@@ -217,10 +217,8 @@ def main() -> None:
         "1 amount mismatch, 2 missing, 1 not eligible; 2 clean drafts."
     )
     print("\nStart the isolated demo with:\n")
-    print(
-        f"  DATABASE_PATH='{DEMO_DB}' "
-        ".venv/bin/streamlit run app.py"
-    )
+    print("  ./run_milaan.sh --demo")
+    print("\nThen open http://127.0.0.1:8501 — the UI shows a demo banner.")
 
 
 if __name__ == "__main__":

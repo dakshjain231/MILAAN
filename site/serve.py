@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Serve the MILAAN website and the local synthetic Streamlit demo."""
+"""Serve the MILAAN website and the local synthetic Flask demo."""
 
 from __future__ import annotations
 
 import argparse
 import http.server
+import json
 import os
 import socket
 import subprocess
@@ -19,7 +20,9 @@ SITE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SITE_DIR.parent
 DEMO_DB = PROJECT_ROOT / "demo" / "milaan_demo.db"
 DEMO_SETUP = PROJECT_ROOT / "demo" / "setup_demo.py"
+DEMO_AGENT_DB = PROJECT_ROOT / "demo" / "milaan_agent_demo.db"
 DEMO_URL = "http://127.0.0.1:8501"
+DEMO_RUNNER = PROJECT_ROOT / "scripts" / "run_primary.py"
 
 
 def port_open(host: str, port: int) -> bool:
@@ -38,6 +41,19 @@ def wait_for_demo(url: str, timeout: float = 25.0) -> bool:
         except (urllib.error.URLError, TimeoutError, OSError):
             time.sleep(0.4)
     return False
+
+
+def demo_running(url: str = DEMO_URL) -> bool:
+    """True only when the existing service identifies the demo database."""
+    try:
+        with urllib.request.urlopen(url + "/api/state", timeout=2) as response:
+            if response.status != 200:
+                return False
+            payload = json.load(response)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return False
+    database = payload.get("database") if isinstance(payload, dict) else None
+    return isinstance(database, dict) and database.get("demo") is True
 
 
 def ensure_demo_database() -> None:
@@ -80,33 +96,39 @@ def main() -> int:
     demo_process = None
     if not args.no_demo:
         if port_open("127.0.0.1", 8501):
-            print("Using the Streamlit demo already running on port 8501.")
+            if not demo_running():
+                print(
+                    "Port 8501 is in use by a non-demo MILAAN instance. "
+                    "Stop it before starting the demo site, or use "
+                    "--no-demo for the static site only.",
+                    file=sys.stderr,
+                )
+                return 2
+            print("Using the MILAAN primary demo already running on port 8501.")
         else:
             ensure_demo_database()
             env = os.environ.copy()
             env["DATABASE_PATH"] = str(DEMO_DB)
+            env["AGENT_DB_PATH"] = str(DEMO_AGENT_DB)
+            env["MILAAN_WA_ENABLED"] = "false"
+            env["WHATSAPP_ENABLED"] = "false"
+            env["WHATSAPP_WEBHOOK_ENABLED"] = "false"
             env["PYTHONUNBUFFERED"] = "1"
-            env["BROWSER_GATHER_USAGE_STATS"] = "false"
             demo_process = subprocess.Popen(
                 [
                     sys.executable,
-                    "-m",
-                    "streamlit",
-                    "run",
-                    str(PROJECT_ROOT / "app.py"),
-                    "--server.headless=true",
-                    "--server.address=127.0.0.1",
-                    "--server.port=8501",
-                    "--browser.gatherUsageStats=false",
+                    str(DEMO_RUNNER),
+                    "--port",
+                    "8501",
                 ],
                 cwd=PROJECT_ROOT,
                 env=env,
             )
-            if not wait_for_demo(DEMO_URL):
-                print("The Streamlit demo did not start in time.", file=sys.stderr)
+            if not wait_for_demo(DEMO_URL + "/health"):
+                print("The primary demo did not start in time.", file=sys.stderr)
                 demo_process.terminate()
                 return 1
-            print(f"Started the synthetic Streamlit demo on {DEMO_URL}.")
+            print(f"Started the synthetic MILAAN demo on {DEMO_URL}.")
 
     site_url = f"http://127.0.0.1:{args.site_port}"
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.site_port), SiteHandler)

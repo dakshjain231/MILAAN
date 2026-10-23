@@ -8,8 +8,8 @@ sends a fixed test message to an explicitly configured test recipient.
 Usage:
     .venv/bin/python scripts/run_webjs.py
 
-Start the app separately with ``scripts/run_app.py``. Both processes must
-see the same MILAAN_WA_SERVICE_TOKEN.
+Start the app with ``./run_milaan.sh``; it starts this service when enabled.
+Both processes must see the same MILAAN_WA_SERVICE_TOKEN.
 """
 
 from __future__ import annotations
@@ -46,7 +46,9 @@ def main() -> int:
         return 1
 
     os.chdir(SERVICE_DIR)
-    return subprocess.call(["node", "src/index.js"])
+    # exec so the launcher supervises (and can stop) the real Node process.
+    os.execvp("node", ["node", "src/index.js"])
+    return 0
 
 
 if __name__ == "__main__":

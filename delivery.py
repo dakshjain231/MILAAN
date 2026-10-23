@@ -1,7 +1,7 @@
 """WhatsApp Cloud API delivery integration (Task 7).
 
 All provider networking lives here. ``db.py`` stores delivery state and
-``app.py`` orchestrates UI actions, but neither performs HTTP calls.
+``milaan_web.py`` orchestrates UI actions, but neither performs HTTP calls.
 
 Safety model:
 

@@ -64,8 +64,7 @@ The simplest path is to put the shared settings in the repository-root
 ```sh
 cd whatsapp_service && npm ci && cd ..
 cp .env.example .env    # set the values below in .env
-.venv/bin/python scripts/run_webjs.py   # terminal 1: this service
-.venv/bin/python scripts/run_app.py     # terminal 2: Streamlit
+./run_milaan.sh                        # starts the primary UI and this service when enabled
 ```
 
 `scripts/run_webjs.py` loads `.env` once; variables already exported in the

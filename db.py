@@ -147,6 +147,10 @@ CREATE TABLE IF NOT EXISTS gstr2b_imports (
     total_rows INTEGER NOT NULL DEFAULT 0 CHECK (total_rows >= 0),
     accepted_rows INTEGER NOT NULL DEFAULT 0 CHECK (accepted_rows >= 0),
     rejected_rows INTEGER NOT NULL DEFAULT 0 CHECK (rejected_rows >= 0),
+    parser_kind TEXT NOT NULL DEFAULT 'canonical',
+    unsupported_fields TEXT NOT NULL DEFAULT '[]',
+    sheets_used TEXT NOT NULL DEFAULT '[]',
+    skipped_sheets TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'completed'
         CHECK (status IN ('completed', 'failed')),
     imported_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -168,6 +172,14 @@ CREATE TABLE IF NOT EXISTS gstr2b_rows (
     sgst INTEGER,
     igst INTEGER,
     total_gst INTEGER,
+    cess INTEGER,
+    itc_availability TEXT,
+    itc_reason TEXT,
+    reverse_charge TEXT,
+    document_type TEXT,
+    irn TEXT,
+    source_sheet TEXT,
+    source_row INTEGER,
     validation_status TEXT NOT NULL
         CHECK (validation_status IN ('valid', 'invalid', 'needs_review')),
     errors TEXT NOT NULL DEFAULT '[]',
@@ -215,12 +227,17 @@ CREATE TABLE IF NOT EXISTS reconciliation_runs (
         CHECK (needs_review_count >= 0),
     not_eligible_count INTEGER NOT NULL DEFAULT 0
         CHECK (not_eligible_count >= 0),
+    in_2b_not_in_books_count INTEGER NOT NULL DEFAULT 0
+        CHECK (in_2b_not_in_books_count >= 0),
+    itc_unavailable_count INTEGER NOT NULL DEFAULT 0
+        CHECK (itc_unavailable_count >= 0),
     is_latest INTEGER NOT NULL DEFAULT 1 CHECK (is_latest IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (gstr2b_import_id) REFERENCES gstr2b_imports(id)
         ON DELETE CASCADE,
     CHECK (matched_count + amount_mismatch_count + missing_count
-           + needs_review_count + not_eligible_count = invoice_count)
+           + needs_review_count + not_eligible_count
+           + itc_unavailable_count = invoice_count)
 );
 """
 
@@ -228,15 +245,18 @@ RECONCILIATION_RESULTS_DDL = """
 CREATE TABLE IF NOT EXISTS reconciliation_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id INTEGER NOT NULL,
-    invoice_id INTEGER NOT NULL,
+    invoice_id INTEGER,
     gstr2b_row_id INTEGER,
     match_status TEXT NOT NULL
         CHECK (match_status IN ('MATCHED', 'AMOUNT_MISMATCH',
-                                'MISSING_FROM_2B', 'NEEDS_REVIEW',
-                                'NOT_ELIGIBLE')),
+                                'MISSING_FROM_2B', 'IN_2B_NOT_IN_BOOKS',
+                                'NEEDS_REVIEW', 'NOT_ELIGIBLE',
+                                'ITC_UNAVAILABLE')),
     match_method TEXT NOT NULL
         CHECK (match_method IN ('exact', 'exact_tolerance',
-                                'candidate_amount', 'none', 'ineligible')),
+                                'candidate_amount', 'near_invoice',
+                                'in_2b_not_in_books', 'none',
+                                'ineligible')),
     amount_difference_paise INTEGER,
     reason_codes TEXT NOT NULL DEFAULT '[]',
     invoice_number TEXT NOT NULL,
@@ -259,8 +279,16 @@ CREATE TABLE IF NOT EXISTS reconciliation_results (
     CHECK (gstr2b_total_gst_paise IS NULL
            OR (typeof(gstr2b_total_gst_paise) = 'integer'
                AND gstr2b_total_gst_paise >= 0)),
-    CHECK (match_status NOT IN ('MATCHED', 'AMOUNT_MISMATCH')
-           OR gstr2b_row_id IS NOT NULL)
+    CHECK (match_status NOT IN ('MATCHED', 'AMOUNT_MISMATCH',
+                                'ITC_UNAVAILABLE', 'IN_2B_NOT_IN_BOOKS')
+           OR gstr2b_row_id IS NOT NULL),
+    CHECK (
+        (match_status = 'IN_2B_NOT_IN_BOOKS'
+         AND invoice_id IS NULL
+         AND gstr2b_row_id IS NOT NULL)
+        OR (match_status != 'IN_2B_NOT_IN_BOOKS'
+            AND invoice_id IS NOT NULL)
+    )
 );
 """
 
@@ -541,7 +569,7 @@ def get_database_path() -> Path:
     """Return one stable database path, independent of the launch directory.
 
     Relative DATABASE_PATH values are resolved from the project root. This
-    keeps ``milaan.db`` consistent when Streamlit is started from another
+    keeps ``milaan.db`` consistent when the app is started from another
     working directory while still allowing an explicit absolute path.
     """
     configured = os.environ.get("DATABASE_PATH", "milaan.db").strip()
@@ -718,6 +746,187 @@ def _migrate_message_delivery_webhook_columns(conn: sqlite3.Connection) -> None:
         raise
 
 
+def _table_sql(conn: sqlite3.Connection, name: str) -> str | None:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (name,),
+    ).fetchone()
+    return row["sql"] if row is not None else None
+
+
+def _migrate_gstr2b_evidence_columns(conn: sqlite3.Connection) -> None:
+    """Additive ITC-evidence columns for GSTR-2B staging. Never drops rows."""
+    import_columns = _table_columns(conn, "gstr2b_imports")
+    row_columns = _table_columns(conn, "gstr2b_rows")
+    import_additions = (
+        ("parser_kind", "TEXT NOT NULL DEFAULT 'canonical'"),
+        ("unsupported_fields", "TEXT NOT NULL DEFAULT '[]'"),
+        ("sheets_used", "TEXT NOT NULL DEFAULT '[]'"),
+        ("skipped_sheets", "TEXT NOT NULL DEFAULT '[]'"),
+    )
+    row_additions = (
+        ("cess", "INTEGER"),
+        ("itc_availability", "TEXT"),
+        ("itc_reason", "TEXT"),
+        ("reverse_charge", "TEXT"),
+        ("document_type", "TEXT"),
+        ("irn", "TEXT"),
+        ("source_sheet", "TEXT"),
+        ("source_row", "INTEGER"),
+    )
+    missing = [
+        ("gstr2b_imports", name, declaration)
+        for name, declaration in import_additions
+        if name not in import_columns
+    ] + [
+        ("gstr2b_rows", name, declaration)
+        for name, declaration in row_additions
+        if name not in row_columns
+    ]
+    if not missing:
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for table, name, declaration in missing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
+def _needs_two_way_reconciliation_migration(conn: sqlite3.Connection) -> bool:
+    sql = _table_sql(conn, "reconciliation_results")
+    return sql is not None and "IN_2B_NOT_IN_BOOKS" not in sql
+
+
+def _migrate_two_way_reconciliation(conn: sqlite3.Connection) -> None:
+    """Rebuild reconciliation tables for two-way results, preserving history.
+
+    SQLite 3.25+ rewrites foreign keys in *other* tables when a table is
+    renamed. Without ``legacy_alter_table`` the temporary ``_legacy`` names
+    leak into follow-up tables and leave dangling references after the old
+    tables are dropped.
+    """
+    conn.execute("PRAGMA legacy_alter_table = ON")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "ALTER TABLE reconciliation_results RENAME TO reconciliation_results_legacy"
+        )
+        conn.execute(
+            "ALTER TABLE reconciliation_runs RENAME TO reconciliation_runs_legacy"
+        )
+        conn.execute(RECONCILIATION_RUNS_DDL)
+        conn.execute(RECONCILIATION_RESULTS_DDL)
+        run_info = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(reconciliation_runs_legacy)"
+            ).fetchall()
+        }
+        extra_run_defaults = ""
+        if "in_2b_not_in_books_count" not in run_info:
+            extra_run_defaults = ", 0, 0"
+            extra_run_select = ""
+        else:
+            extra_run_defaults = ""
+            extra_run_select = ", in_2b_not_in_books_count, itc_unavailable_count"
+        conn.execute(
+            f"""INSERT INTO reconciliation_runs
+                    (id, gstr2b_import_id, amount_tolerance_paise,
+                     invoice_count, matched_count, amount_mismatch_count,
+                     missing_count, needs_review_count, not_eligible_count,
+                     in_2b_not_in_books_count, itc_unavailable_count,
+                     is_latest, created_at)
+                SELECT id, gstr2b_import_id, amount_tolerance_paise,
+                       invoice_count, matched_count, amount_mismatch_count,
+                       missing_count, needs_review_count, not_eligible_count
+                       {extra_run_select or extra_run_defaults},
+                       is_latest, created_at
+                FROM reconciliation_runs_legacy"""
+        )
+        conn.execute(
+            """INSERT INTO reconciliation_results
+                    (id, run_id, invoice_id, gstr2b_row_id, match_status,
+                     match_method, amount_difference_paise, reason_codes,
+                     invoice_number, supplier_gstin, tax_period,
+                     invoice_total_gst_paise, gstr2b_invoice_number,
+                     gstr2b_total_gst_paise, created_at)
+                SELECT id, run_id, invoice_id, gstr2b_row_id, match_status,
+                       match_method, amount_difference_paise, reason_codes,
+                       invoice_number, supplier_gstin, tax_period,
+                       invoice_total_gst_paise, gstr2b_invoice_number,
+                       gstr2b_total_gst_paise, created_at
+                FROM reconciliation_results_legacy"""
+        )
+        conn.execute("DROP TABLE reconciliation_results_legacy")
+        conn.execute("DROP TABLE reconciliation_runs_legacy")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+
+
+def _repair_legacy_followup_foreign_keys(conn: sqlite3.Connection) -> None:
+    """Rebuild follow-up tables whose foreign keys point at dropped tables.
+
+    Early two-way reconciliation migrations renamed the reconciliation tables
+    and let SQLite rewrite references in ``followup_drafts`` and related
+    tables to ``*_legacy`` names. The data survived but inserts then failed
+    with ``no such table: main.reconciliation_runs_legacy``.
+    """
+    tables = (
+        "followup_verifications",
+        "followup_draft_invoices",
+        "followup_drafts",
+    )
+    if not any(
+        "_legacy" in (_table_sql(conn, table) or "") for table in tables
+    ):
+        return
+
+    conn.execute("PRAGMA legacy_alter_table = ON")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for table in tables:
+            conn.execute(f'ALTER TABLE "{table}" RENAME TO "{table}_fk_old"')
+        for ddl in (
+            FOLLOWUP_DRAFTS_DDL,
+            FOLLOWUP_DRAFT_INVOICES_DDL,
+            FOLLOWUP_VERIFICATIONS_DDL,
+        ):
+            for statement in ddl.split(";"):
+                if statement.strip():
+                    conn.execute(statement)
+        for table in tables:
+            old = f"{table}_fk_old"
+            new_columns = [
+                row["name"]
+                for row in conn.execute(
+                    f'PRAGMA table_info("{table}")'
+                ).fetchall()
+            ]
+            old_columns = _table_columns(conn, old)
+            shared = [name for name in new_columns if name in old_columns]
+            if shared:
+                columns = ", ".join(f'"{name}"' for name in shared)
+                conn.execute(
+                    f'INSERT INTO "{table}" ({columns}) '
+                    f'SELECT {columns} FROM "{old}"'
+                )
+            conn.execute(f'DROP TABLE "{old}"')
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+    conn.executescript(FOLLOWUP_INDEX_DDL)
+
+
 def init_db() -> None:
     """Create the schema if missing. Safe to call repeatedly; never drops
     or resets records. Migrates a Task 1 legacy suppliers table and the
@@ -735,10 +944,15 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         _migrate_followup_approval_snapshots(conn)
         _migrate_message_delivery_webhook_columns(conn)
+        _migrate_gstr2b_evidence_columns(conn)
         if _needs_validation_status_migration(conn):
             _migrate_validation_status_check(conn)
             # Rebuilding drops the old table's indexes with it.
             conn.executescript(INDEX_DDL)
+        if _needs_two_way_reconciliation_migration(conn):
+            _migrate_two_way_reconciliation(conn)
+            conn.executescript(RECONCILIATION_INDEX_DDL)
+        _repair_legacy_followup_foreign_keys(conn)
     finally:
         conn.close()
 
@@ -1220,8 +1434,11 @@ def _insert_gstr2b_row(conn: sqlite3.Connection, import_id: int, row) -> None:
         """INSERT INTO gstr2b_rows
                (import_id, row_number, supplier_gstin, invoice_number,
                 invoice_date, tax_period, taxable_value, cgst, sgst, igst,
-                total_gst, validation_status, errors, warnings, raw_data)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                total_gst, cess, itc_availability, itc_reason, reverse_charge,
+                document_type, irn, source_sheet, source_row,
+                validation_status, errors, warnings, raw_data)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   ?, ?, ?, ?)""",
         (
             import_id,
             row.row_number,
@@ -1234,6 +1451,14 @@ def _insert_gstr2b_row(conn: sqlite3.Connection, import_id: int, row) -> None:
             row.sgst,
             row.igst,
             row.total_gst,
+            getattr(row, "cess", None),
+            getattr(row, "itc_availability", None),
+            getattr(row, "itc_reason", None),
+            getattr(row, "reverse_charge", None),
+            getattr(row, "document_type", None),
+            getattr(row, "irn", None),
+            getattr(row, "source_sheet", None),
+            getattr(row, "source_row", None),
             row.validation_status,
             _issues_json(row.errors),
             _issues_json(row.warnings),
@@ -1263,8 +1488,10 @@ def save_gstr2b_import(parsed) -> dict:
             cursor = conn.execute(
                 """INSERT INTO gstr2b_imports
                        (file_name, file_hash, file_size, source_format,
-                        total_rows, accepted_rows, rejected_rows, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')""",
+                        total_rows, accepted_rows, rejected_rows,
+                        parser_kind, unsupported_fields, sheets_used,
+                        skipped_sheets, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')""",
                 (
                     parsed.file_name,
                     parsed.file_hash,
@@ -1273,6 +1500,10 @@ def save_gstr2b_import(parsed) -> dict:
                     total,
                     accepted,
                     rejected,
+                    getattr(parsed, "parser_kind", "canonical"),
+                    json.dumps(list(getattr(parsed, "unsupported_fields", ()))),
+                    json.dumps(list(getattr(parsed, "sheets_used", ()))),
+                    json.dumps(list(getattr(parsed, "skipped_sheets", ()))),
                 ),
             )
             import_id = cursor.lastrowid
@@ -1396,13 +1627,16 @@ _RECONCILIATION_STATUS_COUNTS = {
     reconciliation.STATUS_MISSING_FROM_2B: "missing_count",
     reconciliation.STATUS_NEEDS_REVIEW: "needs_review_count",
     reconciliation.STATUS_NOT_ELIGIBLE: "not_eligible_count",
+    reconciliation.STATUS_ITC_UNAVAILABLE: "itc_unavailable_count",
+    reconciliation.STATUS_IN_2B_NOT_IN_BOOKS: "in_2b_not_in_books_count",
 }
 
 
 def _load_invoice_records() -> list[reconciliation.InvoiceRecord]:
     with db() as conn:
         rows = conn.execute(
-            """SELECT i.id, i.invoice_number, i.tax_period, i.total_gst,
+            """SELECT i.id, i.invoice_number, i.invoice_date, i.tax_period,
+                      i.taxable_value, i.cgst, i.sgst, i.igst, i.total_gst,
                       i.validation_status, s.gstin AS supplier_gstin
                FROM invoices i
                JOIN suppliers s ON s.id = i.supplier_id
@@ -1416,6 +1650,11 @@ def _load_invoice_records() -> list[reconciliation.InvoiceRecord]:
             tax_period=row["tax_period"],
             total_gst=row["total_gst"],
             validation_status=row["validation_status"],
+            invoice_date=row["invoice_date"],
+            taxable_value=row["taxable_value"],
+            cgst=row["cgst"],
+            sgst=row["sgst"],
+            igst=row["igst"],
         )
         for row in rows
     ]
@@ -1424,22 +1663,41 @@ def _load_invoice_records() -> list[reconciliation.InvoiceRecord]:
 def _load_gstr2b_records(import_id: int) -> list[reconciliation.Gstr2bRecord]:
     with db() as conn:
         rows = conn.execute(
-            """SELECT id, supplier_gstin, invoice_number, tax_period,
-                      total_gst, validation_status
+            """SELECT id, supplier_gstin, invoice_number, invoice_date,
+                      tax_period, taxable_value, cgst, sgst, igst, total_gst,
+                      cess, itc_availability, itc_reason, reverse_charge,
+                      document_type, validation_status, raw_data
                FROM gstr2b_rows WHERE import_id = ? ORDER BY id""",
             (import_id,),
         ).fetchall()
-    return [
-        reconciliation.Gstr2bRecord(
-            row_id=row["id"],
-            supplier_gstin=row["supplier_gstin"],
-            invoice_number=row["invoice_number"],
-            tax_period=row["tax_period"],
-            total_gst=row["total_gst"],
-            validation_status=row["validation_status"],
+    records = []
+    for row in rows:
+        raw = {}
+        try:
+            raw = json.loads(row["raw_data"] or "{}")
+        except (TypeError, ValueError):
+            raw = {}
+        records.append(
+            reconciliation.Gstr2bRecord(
+                row_id=row["id"],
+                supplier_gstin=row["supplier_gstin"],
+                invoice_number=row["invoice_number"],
+                tax_period=row["tax_period"],
+                total_gst=row["total_gst"],
+                validation_status=row["validation_status"],
+                invoice_date=row["invoice_date"],
+                taxable_value=row["taxable_value"],
+                cgst=row["cgst"],
+                sgst=row["sgst"],
+                igst=row["igst"],
+                cess=row["cess"] if "cess" in row.keys() else raw.get("cess"),
+                itc_availability=row["itc_availability"] or raw.get("itc_availability"),
+                itc_reason=row["itc_reason"] or raw.get("itc_reason"),
+                reverse_charge=row["reverse_charge"] or raw.get("reverse_charge"),
+                document_type=row["document_type"] or raw.get("document_type"),
+            )
         )
-        for row in rows
-    ]
+    return records
 
 
 def _insert_reconciliation_result(
@@ -1511,10 +1769,14 @@ def reconcile_gstr2b_import(
             "reconciliation was not started."
         )
 
-    results = reconciliation.reconcile_invoices(invoices, rows, config=config)
+    results = reconciliation.reconcile_batch(invoices, rows, config=config)
+    invoice_results = [
+        result for result in results
+        if result.match_status != reconciliation.STATUS_IN_2B_NOT_IN_BOOKS
+    ]
     if not any(
         result.match_status != reconciliation.STATUS_NOT_ELIGIBLE
-        for result in results
+        for result in invoice_results
     ):
         raise ValueError(
             "No validated ('valid') purchase invoices are eligible for "
@@ -1537,17 +1799,20 @@ def reconcile_gstr2b_import(
                        (gstr2b_import_id, amount_tolerance_paise,
                         invoice_count, matched_count, amount_mismatch_count,
                         missing_count, needs_review_count, not_eligible_count,
+                        in_2b_not_in_books_count, itc_unavailable_count,
                         is_latest)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
                 (
                     gstr2b_import_id,
                     config.amount_tolerance_paise,
-                    len(results),
+                    len(invoice_results),
                     counts["matched_count"],
                     counts["amount_mismatch_count"],
                     counts["missing_count"],
                     counts["needs_review_count"],
                     counts["not_eligible_count"],
+                    counts["in_2b_not_in_books_count"],
+                    counts["itc_unavailable_count"],
                 ),
             )
             run_id = cursor.lastrowid
@@ -2180,6 +2445,112 @@ def get_followup_verifications(draft_id: int | None = None) -> list[dict]:
     with db() as conn:
         rows = conn.execute(query, params).fetchall()
     return [dict(row) for row in rows]
+
+
+RECOVERY_AWAITING = "AWAITING_LATER_EVIDENCE"
+RECOVERY_VERIFIED = "VERIFIED"
+RECOVERY_PARTIAL = "PARTIAL"
+RECOVERY_DISPUTED = "DISPUTED"
+RECOVERY_NOT_FOUND = "NOT_FOUND"
+
+_RECOVERY_RANK = {
+    RECOVERY_NOT_FOUND: 1,
+    RECOVERY_DISPUTED: 2,
+    RECOVERY_PARTIAL: 3,
+    RECOVERY_VERIFIED: 4,
+}
+
+
+def get_followup_recovery_status(draft_id: int) -> dict:
+    """Aggregate later-statement evidence into a recovery status.
+
+    Recovery is verified only when every invoice in the draft has a unique
+    ``PRESENT`` verification in the same later GSTR-2B batch. A delivery
+    status, sent message or supplier promise is never used as evidence.
+    """
+    draft = get_followup_draft(draft_id)
+    if draft is None:
+        raise ValueError(f"follow-up draft {draft_id} not found")
+    invoices = get_followup_draft_invoices(draft_id)
+    invoice_ids = {row["Invoice #"] for row in invoices}
+    total = len(invoice_ids)
+    base = {
+        "status": RECOVERY_AWAITING,
+        "verified_count": 0,
+        "invoice_count": total,
+        "later_import_id": None,
+        "later_file_name": None,
+        "evidence_note": (
+            "No later GSTR-2B evidence has been recorded. A sent message or "
+            "supplier promise is not recovery."
+        ),
+        "outcomes": [],
+    }
+    verifications = get_followup_verifications(draft_id)
+    if not verifications or total == 0:
+        return base
+
+    by_batch: dict[int, list[dict]] = {}
+    for item in verifications:
+        if item.get("invoice_id") not in invoice_ids:
+            continue
+        by_batch.setdefault(item["later_import_id"], []).append(item)
+    if not by_batch:
+        return base
+
+    candidates = []
+    for later_import_id, items in by_batch.items():
+        verified = sum(1 for item in items if item["outcome"] == "PRESENT")
+        disputed = any(
+            item["outcome"] in {"AMOUNT_MISMATCH", "NEEDS_REVIEW"}
+            for item in items
+        )
+        if verified == total:
+            status = RECOVERY_VERIFIED
+        elif verified:
+            status = RECOVERY_PARTIAL
+        elif disputed:
+            status = RECOVERY_DISPUTED
+        else:
+            status = RECOVERY_NOT_FOUND
+        candidates.append((
+            _RECOVERY_RANK[status],
+            later_import_id,
+            status,
+            verified,
+            items,
+        ))
+    rank, later_import_id, status, verified, items = max(candidates)
+    del rank
+    note = {
+        RECOVERY_VERIFIED: (
+            "All draft invoices have a unique matching row with equal GST in "
+            "the same later GSTR-2B batch."
+        ),
+        RECOVERY_PARTIAL: (
+            "Only some draft invoices have matching later evidence; recovery "
+            "is not complete."
+        ),
+        RECOVERY_DISPUTED: (
+            "Later evidence has amount or ambiguity problems; trader/CA "
+            "review is required."
+        ),
+        RECOVERY_NOT_FOUND: (
+            "The selected later batch does not contain matching evidence; "
+            "this does not by itself prove supplier non-filing."
+        ),
+    }[status]
+    return {
+        "status": status,
+        "verified_count": verified,
+        "invoice_count": total,
+        "later_import_id": later_import_id,
+        "later_file_name": items[0].get("later_file_name"),
+        "evidence_note": note,
+        "outcomes": sorted(
+            items, key=lambda item: (item.get("invoice_id"), item["id"])
+        ),
+    }
 
 
 def get_followup_draft(draft_id: int) -> dict | None:

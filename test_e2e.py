@@ -471,50 +471,6 @@ class CoreWorkflowTests(WorkflowTestCase):
         )
         self.assertEqual(self.delivery_count(), 0)
 
-    def test_ui_generates_and_approves_without_delivery(self):
-        from streamlit.testing.v1 import AppTest
-
-        case = self.missing_and_matched_case()
-        at = AppTest.from_file(
-            str(Path(__file__).parent / "app.py"), default_timeout=30
-        )
-        at.run()
-        self.assertEqual(at.exception, [])
-        at.switch_page("pages/6_followups.py").run()
-        self.assertEqual(at.exception, [])
-
-        at.button(key="generate_followups").click().run()
-        self.assertEqual(at.exception, [])
-        self.assertEqual(self.draft_count(), 1)
-        draft_id = db.get_followup_drafts(
-            gstr2b_import_id=case["batch_id"]
-        )[0]["Draft"]
-
-        checkbox_key = f"followup_confirm_{draft_id}"
-        approve_key = f"followup_approve_{draft_id}"
-        confirm = next(
-            item for item in at.checkbox if item.key == checkbox_key
-        )
-        confirm.set_value(True).run()
-        self.assertEqual(at.exception, [])
-        approve = next(
-            item for item in at.button if item.key == approve_key
-        )
-        self.assertFalse(approve.disabled)
-        approve.click().run()
-        self.assertEqual(at.exception, [])
-
-        self.assertEqual(
-            db.get_followup_draft(draft_id)["status"], "APPROVED"
-        )
-        self.assertEqual(self.delivery_count(), 0)
-        warning_text = " ".join(item.value for item in at.warning)
-        self.assertIn("No message has been sent", warning_text)
-        success_text = " ".join(item.value for item in at.success)
-        self.assertIn(
-            f"Draft #{draft_id} APPROVED for delivery review", success_text
-        )
-        self.assertIn("No message has been sent", success_text)
 
 
 if __name__ == "__main__":

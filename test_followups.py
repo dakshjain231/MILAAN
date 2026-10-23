@@ -270,20 +270,23 @@ class DatabaseTestCase(unittest.TestCase):
                     status="valid", period=PERIOD,
                     invoice_date="2026-03-05"):
         taxable = 1_250_000
+        cgst = total_gst // 2
+        sgst = total_gst - cgst
         with db.db() as conn:
             cursor = conn.execute(
                 """INSERT INTO invoices
                        (supplier_id, invoice_number, invoice_date, tax_period,
                         taxable_value, gst_rate, cgst, sgst, igst, total_gst,
                         invoice_total, validation_status)
-                   VALUES (?, ?, ?, ?, ?, 18, ?, 0, 0, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, 18, ?, ?, 0, ?, ?, ?)""",
                 (
                     supplier_id,
                     number,
                     invoice_date,
                     period,
                     taxable,
-                    total_gst,
+                    cgst,
+                    sgst,
                     total_gst,
                     taxable + total_gst,
                     status,
@@ -673,37 +676,6 @@ class StatusAndHistoryTests(DatabaseTestCase):
         self.assertFalse(hasattr(db, "send_message"))
 
 
-class UITests(DatabaseTestCase):
-    def test_ui_generates_and_previews_drafts_without_sending(self):
-        from streamlit.testing.v1 import AppTest
-
-        case = self.prepare_case()
-        at = AppTest.from_file(
-            str(Path(__file__).parent / "app.py"), default_timeout=30
-        )
-        at.run()
-        self.assertEqual(at.exception, [])
-        at.switch_page("pages/6_followups.py").run()
-        self.assertEqual(at.exception, [])
-        at.button(key="generate_followups").click().run()
-        self.assertEqual(at.exception, [])
-        self.assertTrue(
-            any("draft(s) created" in item.value for item in at.success),
-            [item.value for item in at.success],
-        )
-        warning_text = " ".join(item.value for item in at.warning)
-        self.assertIn("No message has been sent", warning_text)
-        approve_buttons = [
-            button for button in at.button
-            if (button.key or "").startswith("followup_approve_")
-        ]
-        self.assertTrue(approve_buttons)
-        text_areas = [
-            area for area in at.text_area
-            if (area.key or "").startswith("followup_text_")
-        ]
-        self.assertTrue(text_areas)
-        self.assertEqual(self.draft_count(), 1)
 
 
 if __name__ == "__main__":

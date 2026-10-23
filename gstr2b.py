@@ -1,8 +1,10 @@
 """Deterministic GSTR-2B file ingestion (CSV / XLSX) — staging only.
 
 This module parses and normalizes an explicitly documented column
-schema; it does NOT support arbitrary GST-portal export layouts, and it
-does NOT perform reconciliation matching against purchase invoices.
+schema for CSV/XLSX templates. GST-portal GSTR-2B B2B Excel exports are
+handled by ``gstr2b_portal.py`` (header-row detection, Indian amounts,
+ITC-evidence columns). Other portal sheets and PDF/OCR are not
+supported. This module does not reconcile against purchase invoices.
 
 SUPPORTED INPUT SCHEMA (normalized test columns)
 ================================================
@@ -116,6 +118,14 @@ class ParsedRow:
     errors: tuple[validation.Issue, ...]
     warnings: tuple[validation.Issue, ...]
     raw_data: str
+    cess: int | None = None
+    itc_availability: str | None = None
+    itc_reason: str | None = None
+    reverse_charge: str | None = None
+    document_type: str | None = None
+    irn: str | None = None
+    source_sheet: str | None = None
+    source_row: int | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +135,10 @@ class ParsedGstr2b:
     file_hash: str
     file_size: int
     rows: tuple[ParsedRow, ...]
+    parser_kind: str = "canonical"
+    unsupported_fields: tuple[str, ...] = ()
+    sheets_used: tuple[str, ...] = ()
+    skipped_sheets: tuple[str, ...] = ()
 
     @property
     def total_rows(self) -> int:
@@ -283,6 +297,16 @@ def read_tabular_file(
     if extension == ".xlsx":
         headers, data_rows = _read_xlsx(content)
         return headers, data_rows, "xlsx"
+    if extension == ".pdf":
+        raise ValueError(
+            "PDF GSTR-2B is not supported. Download the GST portal Excel "
+            "(.xlsx) B2B export or use the documented CSV/XLSX template."
+        )
+    if extension == ".xls":
+        raise ValueError(
+            "Legacy .xls GSTR-2B files are not supported. Save the file as "
+            ".xlsx or CSV and import again."
+        )
     raise ValueError("unsupported file type; expected .csv or .xlsx")
 
 
@@ -310,6 +334,52 @@ def _build_column_index(headers: list[str]) -> dict[str, int]:
             "missing required column(s): " + ", ".join(missing)
         )
     return index
+
+
+def _recognized_field_count(row: Iterable[Any]) -> int:
+    fields = set()
+    for header in row:
+        name = _normalize_header(header)
+        if name in COLUMN_ALIASES:
+            fields.add(COLUMN_ALIASES[name])
+    return len(fields)
+
+
+def _locate_canonical_header(rows: list[list[Any]]) -> int:
+    """Find the canonical header row, allowing leading title rows.
+
+    Multiple complete-looking header rows are rejected as ambiguous rather
+    than choosing one silently.
+    """
+    best_index = 0
+    best_score = -1
+    candidates: list[int] = []
+    for index, row in enumerate(rows[:30]):
+        score = _recognized_field_count(row)
+        if score > best_score:
+            best_score = score
+            best_index = index
+        if score == len(REQUIRED_COLUMNS):
+            candidates.append(index)
+    if len(candidates) > 1:
+        positions = ", ".join(str(index + 1) for index in candidates)
+        raise ValueError(
+            "ambiguous GSTR-2B header: multiple rows look like a complete "
+            f"header (file rows {positions}). The file was not imported."
+        )
+    if len(candidates) == 1:
+        return candidates[0]
+    if best_score <= 0:
+        raise ValueError(
+            "no recognizable GSTR-2B header row was found in the first 30 "
+            "rows; expected columns: " + ", ".join(REQUIRED_COLUMNS)
+            + ". PDF/OCR is not supported."
+        )
+    # Produce a specific missing/duplicate-column error for the best row.
+    _build_column_index(
+        [_cell_text(cell) for cell in rows[best_index]]
+    )
+    raise ValueError("GSTR-2B header could not be validated")
 
 
 def _issue(code: str, field: str, message: str) -> validation.Issue:
@@ -454,13 +524,40 @@ def _parse_row(
 
 
 def parse_gstr2b(content: bytes, file_name: str) -> ParsedGstr2b:
-    """Parse a normalized GSTR-2B CSV/XLSX file.
+    """Parse a canonical GSTR-2B CSV/XLSX file or a portal B2B workbook.
 
     Raises ValueError for fatal file-level problems (unreadable file,
     missing/duplicate required headers, no data rows). Row-level problems
     never abort the batch; they are returned as rejected ParsedRows.
     """
+    extension = Path(file_name).suffix.lower()
+    if extension == ".xlsx":
+        from gstr2b_portal import try_parse_portal_workbook
+
+        portal = try_parse_portal_workbook(content, file_name)
+        if portal is not None:
+            return portal
     headers, data_rows, source_format = read_tabular_file(content, file_name)
+    all_rows = [headers] + data_rows
+    try:
+        header_index = _locate_canonical_header(all_rows)
+    except ValueError:
+        if extension == ".csv":
+            from gstr2b_portal import (
+                looks_like_portal_csv_table,
+                parse_portal_csv_rows,
+            )
+
+            if looks_like_portal_csv_table(all_rows):
+                portal = parse_portal_csv_rows(
+                    all_rows, content, file_name
+                )
+                if portal is not None:
+                    return portal
+        raise
+    if header_index:
+        headers = [_cell_text(cell) for cell in all_rows[header_index]]
+        data_rows = all_rows[header_index + 1:]
 
     column_index = _build_column_index(headers)
     non_blank_rows = [

@@ -13,14 +13,18 @@ __pycache__/
 # Environment files
 .env
 .env.local
-.streamlit/secrets.toml
-
 # Runtime data and backups
 backups/
+logs/
+.run/
 
 # SQLite Database
 *.db
 *.sqlite3
+
+# Packaging artifacts
+MILAAN_FINAL.zip
+milaan-final/
 
 # OS / Editor files
 .DS_Store
@@ -43,3 +47,11 @@ whatsapp_service/.wwebjs_cache/
 whatsapp_service/*.log
 .wwebjs_auth/
 .wwebjs_cache/
+
+# Agent runtime data (databases, media, generated demo files), but keep the
+# evaluation results cited by EVALUATION.md; they contain no personal data.
+agent_data/*
+!agent_data/eval/
+
+# Tunnel binary: download it per machine
+cloudflared.exe

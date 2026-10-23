@@ -584,51 +584,6 @@ class ValidationStatusMigrationTests(unittest.TestCase):
                 )
 
 
-class AppValidationFlowTests(unittest.TestCase):
-    """Clicks the real Streamlit buttons via streamlit.testing.v1.AppTest."""
-
-    def setUp(self):
-        self._tmp = tempfile.mkdtemp(prefix="milaan-test-")
-        self._old_env = os.environ.get("DATABASE_PATH")
-        os.environ["DATABASE_PATH"] = str(Path(self._tmp) / "test_milaan.db")
-
-    def tearDown(self):
-        if self._old_env is None:
-            os.environ.pop("DATABASE_PATH", None)
-        else:
-            os.environ["DATABASE_PATH"] = self._old_env
-        shutil.rmtree(self._tmp, ignore_errors=True)
-
-    def test_seed_then_validate_button_updates_ui(self):
-        from streamlit.testing.v1 import AppTest
-
-        at = AppTest.from_file(str(Path(__file__).parent / "app.py"),
-                               default_timeout=30)
-        at.run()
-        self.assertEqual(at.exception, [])
-
-        at.button(key="seed_demo").click().run()
-        self.assertEqual(at.exception, [])
-
-        at.button(key="validate_all").click().run()
-        self.assertEqual(at.exception, [])
-
-        metrics = {m.label: str(m.value) for m in at.metric}
-        self.assertEqual(metrics.get("Invoices"), "6")
-        self.assertEqual(metrics.get("Valid"), "5")
-        self.assertEqual(metrics.get("Invalid"), "1")
-        self.assertEqual(metrics.get("Needs review"), "0")
-
-        # Validation failures are visible, not swallowed.
-        self.assertTrue(any("Validated 6 invoice(s)" in s.value
-                            for s in at.success))
-
-        import db
-
-        summary = db.get_validation_summary()
-        self.assertEqual(summary["valid"], 5)
-        self.assertEqual(summary["invalid"], 1)
-        self.assertEqual(summary["pending"], 0)
 
 
 if __name__ == "__main__":
