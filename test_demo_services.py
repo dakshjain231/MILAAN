@@ -135,6 +135,14 @@ class LauncherSafetyTests(unittest.TestCase):
         self.assertFalse(log.exists())
         self.assertTrue((demo_services.LOG_DIR / "web.log.1").exists())
 
+    def test_database_paths_resolve_to_the_real_or_demo_workspace(self):
+        self.assertEqual(demo_services.database_for({}), str((ROOT / "milaan.db").resolve()))
+        self.assertEqual(demo_services.database_for({"DATABASE_PATH": "milaan.db"}),
+                         str((ROOT / "milaan.db").resolve()))
+        demo = demo_services.database_for({"DATABASE_PATH": str(demo_services.DEMO_DATABASE)})
+        self.assertEqual(Path(demo).parent, ROOT / "demo")
+        self.assertNotEqual(demo, demo_services.database_for({}))
+
     def test_closed_ports_are_not_reported_healthy(self):
         self.assertFalse(demo_services.web_healthy(1))
         self.assertFalse(demo_services.port_in_use(1))

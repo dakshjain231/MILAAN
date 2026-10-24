@@ -100,6 +100,18 @@ class PortalJsonTests(unittest.TestCase):
         self.assertEqual(row.tax_period, "2026-03")
         self.assertEqual(row.itc_availability, "Y")
 
+    def test_invoice_level_amounts_are_supported(self):
+        # Shape used by the agent's demo statements: amounts on the invoice.
+        content = portal_json([{
+            "ctin": GSTIN_A, "supprd": "032026",
+            "inv": [{"inum": "INV-DEMO-001", "dt": "05-03-2026", "val": 14750, "itcavl": "Y",
+                     "rev": "N", "txval": 12500.0, "igst": 0.0, "cgst": 1125.0, "sgst": 1125.0,
+                     "cess": 0.0}],
+        }])
+        row = gstr2b.parse_gstr2b(content, "gstr2b.json").rows[0]
+        self.assertEqual(row.validation_status, "valid", row.errors)
+        self.assertEqual((row.taxable_value, row.total_gst), (1_250_000, 225_000))
+
     def test_invoice_value_is_never_used_as_taxable_value(self):
         content = portal_json([{
             "ctin": GSTIN_A, "supprd": "032026",
@@ -240,6 +252,116 @@ class JsonFormatMigrationTests(IsolatedApp):
         imported = self.upload("/api/gstr2b/import", content, "after.json")
         self.assertEqual(imported.status_code, 200, imported.get_json())
         self.assertEqual(self.count("gstr2b_imports"), before["gstr2b_imports"] + 1)
+
+
+class DemoDatabaseLabelTests(unittest.TestCase):
+    def test_workspaces_under_demo_are_labelled_demo(self):
+        saved = os.environ.get("DATABASE_PATH")
+        try:
+            for path, expected in ((Path(__file__).resolve().parent / "demo" / "sarcathon_demo.db", True),
+                                   (Path(tempfile.gettempdir()) / "milaan.db", False)):
+                os.environ["DATABASE_PATH"] = str(path)
+                self.assertEqual(milaan_web._database_metadata()["demo"], expected, path)
+        finally:
+            if saved is None:
+                os.environ.pop("DATABASE_PATH", None)
+            else:
+                os.environ["DATABASE_PATH"] = saved
+
+
+class DemoCycleTests(IsolatedApp):
+    """The shipped demo files drive one complete trader cycle (no real send)."""
+
+    ROOT = Path(__file__).resolve().parent
+
+    def fixture(self, name):
+        return (self.ROOT / "demo" / name).read_bytes()
+
+    def run_first_cycle(self):
+        self.assertEqual(self.upload("/api/invoices/import", self.fixture("demo_purchase_invoices.csv"),
+                                     "demo_purchase_invoices.csv").get_json()["imported"], 5)
+        batch = self.upload("/api/gstr2b/import", self.fixture("demo_gstr2b_portal.json"),
+                            "demo_gstr2b_portal.json").get_json()
+        self.assertEqual((batch["accepted_rows"], batch["rejected_rows"]), (5, 0))
+        run = self.client.post("/api/reconciliations", json={"batch_id": batch["import_id"], "tolerance": 0})
+        self.assertEqual(run.status_code, 200)
+        results = {r["number"]: r for r in self.client.get("/api/state").get_json()["reconciliation"]["results"]}
+        return batch["import_id"], results
+
+    def test_first_cycle_statuses_and_amounts(self):
+        _, results = self.run_first_cycle()
+        self.assertEqual(results["DEMO-101"]["status"], "MATCHED")
+        self.assertEqual(results["DEMO-102"]["status"], "MATCHED")
+        self.assertEqual(results["DEMO-104"]["status"], "MATCHED")
+        self.assertEqual((results["DEMO-103"]["status"], results["DEMO-103"]["difference"]), ("AMOUNT_MISMATCH", 300.0))
+        self.assertEqual(results["DEMO-105"]["status"], "MISSING_FROM_2B")
+        self.assertEqual(results["DEMO-999"]["status"], "IN_2B_NOT_IN_BOOKS")
+        self.assertNotIn("DEMO-106", results)  # invalid row was never imported
+
+    def test_missing_number_blocks_approval_until_the_trader_adds_one(self):
+        batch_id, _ = self.run_first_cycle()
+        self.client.post("/api/followups/generate", json={"batch_id": batch_id})
+        draft = self.client.get("/api/state").get_json()["followups"][0]
+        self.assertEqual((draft["status"], draft["channel"]), ("NEEDS_REVIEW", "unavailable"))
+        detail = self.client.get(f"/api/followups/{draft['id']}").get_json()
+        self.assertIn("DELIVERY_CHANNEL_UNAVAILABLE", detail["approval_problems"])
+
+        bad = self.client.post(f"/api/followups/{draft['id']}/contact-phone", json={"contact_phone": "call me"})
+        self.assertEqual(bad.status_code, 400)
+        ok = self.client.post(f"/api/followups/{draft['id']}/contact-phone", json={"contact_phone": "+91 90000 12345"})
+        self.assertEqual(ok.status_code, 200)
+        body = ok.get_json()
+        self.assertEqual(body["draft"]["status"], "DRAFT")
+        self.assertEqual(body["approval_problems"], [])
+        self.assertNotIn("90000 12345", json.dumps(body))  # masked in responses
+        self.assertEqual(self.count("message_deliveries"), 0)  # nothing sent
+
+        self.client.post(f"/api/followups/{draft['id']}/approve", json={"confirmed": True})
+        late = self.client.post(f"/api/followups/{draft['id']}/contact-phone", json={"contact_phone": "+91 90000 99999"})
+        self.assertEqual(late.status_code, 400)  # approved recipient is frozen
+
+    def test_late_reported_invoice_in_next_cycle_resolves_the_follow_up(self):
+        batch_id, _ = self.run_first_cycle()
+        self.client.post("/api/followups/generate", json={"batch_id": batch_id})
+        draft = self.client.get("/api/state").get_json()["followups"][0]
+        self.client.post(f"/api/followups/{draft['id']}/contact-phone", json={"contact_phone": "+91 90000 12345"})
+        self.client.post(f"/api/followups/{draft['id']}/approve", json={"confirmed": True})
+        sent = self.client.post(f"/api/followups/{draft['id']}/send",
+                                json={"mode": "mock", "confirm_send": True, "opt_in_confirmed": True})
+        self.assertEqual(sent.get_json()["delivery"]["provider"], "mock")
+
+        nxt = self.upload("/api/gstr2b/import", self.fixture("demo_gstr2b_portal_next.json"),
+                          "demo_gstr2b_portal_next.json").get_json()
+        rows = [r for r in self.client.get("/api/state").get_json()["gstr2b"]["rows"] if r["batch"] == nxt["import_id"]]
+        self.assertEqual([r["validation"] for r in rows], ["needs_review"])  # late report, flagged
+        verified = self.client.post(f"/api/followups/{draft['id']}/verify", json={"later_batch_id": nxt["import_id"]})
+        self.assertEqual(verified.status_code, 200)
+        self.assertEqual(verified.get_json()["outcomes"][0]["outcome"], "PRESENT")
+        state = {d["id"]: d for d in self.client.get("/api/state").get_json()["followups"]}
+        self.assertEqual(state[draft["id"]]["recovery_status"], "VERIFIED")
+        self.assertEqual(state[draft["id"]]["workflow_status"], "RESOLVED")
+
+    def test_preview_counts_review_rows_as_importable_not_rejected(self):
+        preview = self.upload("/api/gstr2b/preview", self.fixture("demo_gstr2b_portal_next.json"),
+                              "demo_gstr2b_portal_next.json").get_json()
+        self.assertEqual((preview["accepted"], len(preview["review"]), len(preview["rejected"])), (0, 1, 0))
+        self.assertEqual(preview["review"][0]["errors"][0]["code"], "DATE_PERIOD_INCONSISTENT")
+
+    def test_late_rows_with_other_warnings_are_not_recovery_evidence(self):
+        batch_id, _ = self.run_first_cycle()
+        self.client.post("/api/followups/generate", json={"batch_id": batch_id})
+        draft = self.client.get("/api/state").get_json()["followups"][0]
+        self.client.post(f"/api/followups/{draft['id']}/contact-phone", json={"contact_phone": "+91 90000 12345"})
+        self.client.post(f"/api/followups/{draft['id']}/approve", json={"confirmed": True})
+        # No supplier period and no return period: the period is guessed from
+        # the invoice date, which is a reason for human review, not evidence.
+        doc = json.loads(self.fixture("demo_gstr2b_portal_next.json"))
+        del doc["data"]["rtnprd"]
+        del doc["data"]["docdata"]["b2b"][0]["supprd"]
+        nxt = self.upload("/api/gstr2b/import", json.dumps(doc).encode(), "guessed_period.json").get_json()
+        outcome = self.client.post(f"/api/followups/{draft['id']}/verify",
+                                   json={"later_batch_id": nxt["import_id"]}).get_json()["outcomes"][0]
+        self.assertEqual(outcome["outcome"], "NOT_FOUND")
 
 
 # --- purchase-invoice formats --------------------------------------------------

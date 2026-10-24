@@ -196,6 +196,10 @@ def _call(
     return status, decoded
 
 
+# Bridge error codes for failures after the client attempted the send.
+_AMBIGUOUS_SEND_CODES = {"send_outcome_unknown", "missing_message_id", "send_failed"}
+
+
 def _payload_error(payload: Any, secrets: tuple[str | None, ...] = ()) -> str | None:
     if isinstance(payload, dict):
         value = payload.get("error")
@@ -416,6 +420,19 @@ class WhatsAppWebJsProvider:
                 error_code=code or f"HTTP_{status}",
                 error_message=(
                     "The local service rejected the message request."
+                ),
+            )
+        if code in _AMBIGUOUS_SEND_CODES:
+            # The client threw or returned no id after attempting the send:
+            # WhatsApp may already have the message, so a retry could
+            # duplicate it. Preserve the outcome as unknown.
+            return delivery.ProviderResponse(
+                outcome=delivery.OUTCOME_UNKNOWN,
+                http_status=status,
+                error_code=code,
+                error_message=(
+                    "WhatsApp Web did not confirm the send; the message may "
+                    "or may not have been delivered. Check before retrying."
                 ),
             )
         if status == 429 or 500 <= status < 600:

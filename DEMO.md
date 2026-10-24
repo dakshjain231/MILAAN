@@ -1,151 +1,109 @@
-# MILAAN synthetic judge demo
+# MILAAN SARCathon demo
 
-A repeatable, fully synthetic walkthrough of the primary Flask workspace:
+Two parts, both fully synthetic:
 
-1. Use an isolated demo database with four synthetic suppliers and five bills.
-2. Import a normalized GSTR-2B CSV with one rejected row.
-3. Reconcile the bills against that batch.
-4. Preview eligibility, then generate two supplier drafts.
-5. Approve one draft for delivery review and leave the other in `DRAFT`.
-6. Verify that no external message was sent.
+* **A. The trader workspace** (six-page web UI): import bills and a
+  GST-portal GSTR-2B, reconcile, prepare and approve a supplier follow-up,
+  then verify recovery against the next month's GSTR-2B.
+* **B. The WhatsApp agent loop** (offline simulator): bill photos, targeted
+  re-ask, diagnosis, consent gate, and next-cycle recovery.
 
-The demo uses only `demo/milaan_demo.db`. It never touches `milaan.db`,
-`agent_data/milaan_agent.db`, or any real supplier conversation. Demo mode
-also disables the WhatsApp Web bridge, Cloud API, webhook and inbound agent.
+Nothing in this script touches `milaan.db`, and no WhatsApp message is sent
+unless you deliberately use the guarded test-send in Settings.
 
-## One-command start
-
-From the project root (stop any instance already using port 8501 first):
+## Setup (before the presentation)
 
 ```bash
-./run_milaan.sh --stop
-./run_milaan.sh --demo
+./stop_milaan_demo.sh                 # if the normal workspace is running
+rm -f demo/sarcathon_demo.db demo/sarcathon_agent.db   # fresh demo workspace (demo files only)
+./start_milaan_demo.sh --demo-db
 ```
 
-The launcher seeds `demo/milaan_demo.db` if it does not exist, then opens the
-same primary UI at **http://127.0.0.1:8501**. The page shows an
-**Isolated synthetic demo** banner with the database path.
+Open **http://127.0.0.1:8501/**. The header badge reads **Demo Database**,
+and `./status_milaan_demo.sh` prints `database: demo/sarcathon_demo.db`.
+The demo workspace starts empty.
 
-To reset before a new walkthrough:
+Files used (all synthetic, matching each other):
 
-```bash
-./run_milaan.sh --stop
-.venv/bin/python demo/setup_demo.py
-./run_milaan.sh --demo
-```
-
-Setup resets only the demo database and rewrites `demo/DEMO_GSTR2B.csv`.
-Expected setup result: 4 synthetic suppliers, 5 invoices, 4 valid and
-1 invalid; no import, reconciliation, draft or delivery.
-
-## Demo script
-
-### 1. Show seeded data
-
-Open **Bills**.
-
-- Invoices: **5**.
-- Validation: **4 valid, 0 needs review, 1 invalid**.
-- `DEMO-INVALID-001` has an invalid date (`2026-02-30`), so it cannot be
-  matched or used for follow-up.
-- No GSTR-2B batches, reconciliation runs or follow-up drafts yet.
-
-Show **Suppliers** for the four synthetic master records. Phone numbers are
-masked in the UI.
-
-Talking point: validation is deterministic field/checksum/arithmetic
-checking, not a claim of live GST registration verification.
-
-### 2. Import GSTR-2B
-
-Open **GSTR-2B**, upload `demo/DEMO_GSTR2B.csv`, and preview it first.
-
-- Expected preview: **3 rows, 2 accepted, 1 rejected**.
-- The rejected row (`DEMO-BAD-ROW`) has a bad GSTIN and negative GST.
-- Confirm the import. Expected: **Batch #1: 2 accepted, 1 rejected**.
-
-Talking point: the supported input is MILAAN's normalized schema, not an
-arbitrary real portal export. Rejected rows are preserved and shown, never
-silently coerced.
-
-### 3. Reconcile
-
-Open **Reconciliation**.
-
-- Select batch #1.
-- Leave tolerance at **0 paise**.
-- Click **Reconcile batch**.
-
-Expected run:
-
-- **1 matched**
-- **1 amount mismatch**
-- **2 missing from 2B**
-- **0 needs review**
-- **1 not eligible**
-- **5 bills compared**
-
-Evidence table:
-
-| Invoice | Expected result |
+| File | Contents |
 | --- | --- |
-| `DEMO-EXACT-001` | `MATCHED` |
-| `DEMO-AMOUNT-001` | `AMOUNT_MISMATCH`, difference `-50.00` |
-| `DEMO-MISSING-001` | `MISSING_FROM_2B` |
-| `DEMO-MISSING-002` | `MISSING_FROM_2B` |
-| `DEMO-INVALID-001` | `NOT_ELIGIBLE` |
+| `demo/demo_purchase_invoices.csv` | 6 purchase bills; `DEMO-106` has inconsistent tax and is rejected |
+| `demo/demo_gstr2b_portal.json` | September GSTR-2B in GST-portal JSON layout (`data.docdata.b2b`) |
+| `demo/demo_gstr2b_portal_next.json` | October GSTR-2B in which the supplier reported `DEMO-105` late |
 
-Use the row's **⋮** action on a mismatch or missing bill to compare the
-purchase bill and the linked GSTR-2B row, including reason codes and amount
-differences. Use the **Status** filter (then **Apply filters**) to show only
-open mismatches.
+## A. Workspace script
 
-Talking point: `MISSING_FROM_2B` means only that this batch has no usable
-counterpart. It does not prove supplier non-filing, ITC eligibility or
-recoverability.
+1. **Purchase Invoices → Upload Invoices** → `demo/demo_purchase_invoices.csv`.
+   Preview: *5 of 6 rows valid*; `DEMO-106` is shown with its tax error and
+   is not imported. (Optional: upload a GSTR-2B file here to show the single
+   inline error explaining it belongs on the GSTR-2B page.)
+2. **GSTR-2B Import → Choose File** → `demo/demo_gstr2b_portal.json`.
+   Preview: *All 5 rows valid*; rows show **Imported**.
+3. **Reconciliation → Run reconciliation.** Expected, with values read from
+   the stored rows:
 
-### 4. Preview and generate follow-ups
+   | Invoice | Status | Note |
+   | --- | --- | --- |
+   | DEMO-101, DEMO-102, DEMO-104 | Matched | differences 0 |
+   | DEMO-103 | Amount mismatch | ITC difference ₹300 (₹1,800 billed, ₹1,500 in 2B) |
+   | DEMO-105 | Missing from 2B | no 2B values invented |
+   | DEMO-999 | In 2B, not in books | 2B-only row |
 
-Open **Supplier follow-ups**.
+   Use the Status filter + **Apply filters** to isolate mismatches; filters
+   never re-run reconciliation.
+4. **Supplier Follow-ups → Prepare drafts.** One draft (Umang Electricals,
+   DEMO-105) appears as **Needs review**: no WhatsApp number is on file. Open
+   it (⋮), enter a *consenting test number* in **Supplier WhatsApp number**,
+   and save. The draft becomes **Pending**; nothing is sent.
+5. Tick *"I reviewed this message"* → **Approve Draft** → status
+   **In progress**. Under **Delivery**, tick both confirmations and press
+   **Simulate send** (a mock delivery record; the modal states that live
+   delivery is off). Simulation never marks the follow-up resolved.
+6. **Next cycle:** GSTR-2B Import → `demo/demo_gstr2b_portal_next.json`.
+   Its one row shows **Check required**: DEMO-105 is dated September but
+   was reported in the October return, the late-filing signature.
+7. Reopen the follow-up → **Check a later GSTR-2B statement** → select the
+   October batch → **Check statement**. Recovery evidence becomes
+   **VERIFIED** and the follow-up becomes **Resolved**.
 
-- Choose batch #1 in **Eligibility preview**.
-- Click **Preview eligibility**. Nothing is written.
-- Expected: **2 eligible invoices across 2 supplier groups**, with the
-  matched, amount-mismatched and invalid bills listed under
-  **Excluded invoices and reasons**.
-- Expand **Preview draft wording** to show the neutral message text.
-- Click **Generate drafts**. Expected: **2 drafts created**. Both start as
-  `DRAFT`; nothing is sent.
+Do not press **Run reconciliation** after step 6: the newest batch has no
+fully valid rows, and the app will (correctly) refuse and say why.
 
-Show the draft status history: `CREATED -> DRAFT` with a note that no message
-was sent.
+## B. WhatsApp agent loop (offline)
 
-### 5. Approve one draft, leave one clean draft
+```bash
+AGENT_DB_PATH=/tmp/milaan_demo_agent.db .venv/bin/python -m agent.simulate --script demo --offline
+```
 
-- Select the Meridian Components draft and click **Review**.
-- Show the neutral wording and supporting invoice evidence.
-- Click **Approve for delivery review** and confirm.
-- Expected: the draft becomes `APPROVED`; no message has been sent.
-- Leave the other draft in `DRAFT` to demonstrate the pre-approval state.
+The same `Agent` code runs with a console channel and the disclosed fixture
+reader instead of the vision model. It shows: a checksum-verified bill; a
+smudged GSTIN answered with a targeted re-ask (never guessed); a GSTIN that
+conflicts with the 2B routed to the trader, not the supplier; drafts with the
+total at stake and nothing sent before *haan*; and the November 2B marking
+3 bills / ₹16,362 **RECOVERED**. Escalation after the chase limit and the
+CHANNEL-BLOCKED phone-call script are covered by `test_agent.py`.
 
-Do not create a delivery in the judge demo. The approval snapshot is the end
-of the guaranteed workflow.
+## Back to the real workspace
+
+```bash
+./stop_milaan_demo.sh
+./start_milaan_demo.sh
+```
 
 ## What the demo proves
 
-- End-to-end deterministic import, reconciliation, eligibility preview,
-  draft creation and approval.
-- Exact, amount-mismatch, missing, invalid and review paths are explicit.
-- Invalid rows and invoices are excluded, not coerced.
-- Older reconciliation runs keep their own invoice-level evidence.
-- Drafts require human approval and no external send occurs.
-- The demo database is isolated from operational and agent data and uses
-  synthetic values only.
+* Portal-JSON GSTR-2B parsing with exact amounts, deterministic
+  reconciliation, and values/differences that agree with each status.
+* Invalid input is rejected and shown, never coerced or partially imported.
+* Supplier messages need a number the trader supplies, explicit approval
+  and explicit send confirmation; "Resolved" needs later 2B evidence.
+* The demo workspace is separate from `milaan.db` and labelled as demo.
 
 ## What it does not prove
 
-- Compatibility with genuine GST portal export layouts.
-- Live GSTIN validity, ITC eligibility or supplier fault.
-- OCR or arbitrary invoice extraction (no such pipeline exists).
-- Real WhatsApp delivery.
-- Production-scale or real-world accuracy; see `EVALUATION.md`.
+* Live extraction accuracy (needs an LLM API key; see `EVALUATION.md`).
+* Live supplier delivery: WhatsApp Cloud API is not configured, so supplier
+  sends are simulated. The WhatsApp Web bridge can only send the fixed test
+  message to the configured test number.
+* Compatibility with genuine (non-synthetic) GST portal exports, live GSTIN
+  registration, or supplier fault.

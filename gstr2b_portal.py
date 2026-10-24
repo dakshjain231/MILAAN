@@ -617,7 +617,8 @@ def _parse_supported_tables(
 
 # --- GST-portal GSTR-2B JSON ------------------------------------------------
 # The portal JSON nests invoices as data.docdata.b2b[].inv[].items[] (older
-# and GSTR-2A-shaped exports use data.b2b / b2b and itms[].itm_det). Each
+# and GSTR-2A-shaped exports use data.b2b / b2b and itms[].itm_det; some carry
+# txval/igst/cgst/sgst/cess directly on the invoice). Each
 # invoice is flattened into one portal-shaped row and validated by the same
 # _parse_portal_row rules as the Excel export, so amounts, ITC availability,
 # reverse charge and cess are handled identically. Amounts are summed with
@@ -720,6 +721,10 @@ def try_parse_portal_json(content: bytes, file_name: str) -> gstr2b.ParsedGstr2b
             if not isinstance(inv, dict):
                 raise ValueError(f"GSTR-2B JSON: {i_path} must be an object. Nothing was imported.")
             raw_items = inv.get("items", inv.get("itms", []))
+            # Some exports carry the amounts on the invoice itself rather than
+            # in items[]; treat such an invoice as its own single item.
+            if not raw_items and any(k in inv for k in _JSON_ITEM_KEYS["taxable_value"]):
+                raw_items = [inv]
             if not isinstance(raw_items, list):
                 raise ValueError(f"GSTR-2B JSON: {i_path}.items must be a list. Nothing was imported.")
             items = []

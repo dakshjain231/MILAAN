@@ -2460,15 +2460,26 @@ def verify_followup_with_later_import(
         if invalid_origin:
             raise ValueError("Draft evidence is not an original missing-from-2B result")
 
-        later_rows = conn.execute(
-            """SELECT id, supplier_gstin, invoice_number, tax_period, total_gst
+        # A late-reported invoice appears in a later statement under the
+        # supplier's later filing period, so the parser marks it
+        # needs_review (invoice date outside that period). That difference is
+        # exactly what recovery evidence looks like; any other warning or an
+        # error still disqualifies the row.
+        candidate_rows = conn.execute(
+            """SELECT id, supplier_gstin, invoice_number, tax_period, total_gst,
+                      validation_status, warnings
                FROM gstr2b_rows
-               WHERE import_id = ? AND validation_status = 'valid'
+               WHERE import_id = ? AND validation_status IN ('valid', 'needs_review')
                  AND supplier_gstin IS NOT NULL AND invoice_number IS NOT NULL
                  AND total_gst IS NOT NULL
                ORDER BY id""",
             (later_import_id,),
         ).fetchall()
+        later_rows = [
+            row for row in candidate_rows
+            if row["validation_status"] == "valid"
+            or {code for code in _issue_codes(row["warnings"])} <= _LATE_REPORTING_WARNINGS
+        ]
 
         outcomes = []
         for source in source_rows:
@@ -2521,6 +2532,17 @@ def verify_followup_with_later_import(
             ).fetchone()
             outcomes.append(dict(saved))
         return outcomes
+
+
+_LATE_REPORTING_WARNINGS = {"DATE_PERIOD_INCONSISTENT"}
+
+
+def _issue_codes(raw: str | None) -> list[str]:
+    try:
+        issues = json.loads(raw or "[]")
+    except ValueError:
+        return ["UNPARSEABLE"]
+    return [str(item.get("code")) for item in issues if isinstance(item, dict)] or []
 
 
 def get_followup_verifications(draft_id: int | None = None) -> list[dict]:
@@ -2885,6 +2907,61 @@ def approve_followup_draft(draft_id: int, *, confirmed: bool) -> None:
             )
     finally:
         conn.close()
+
+
+def set_followup_contact_phone(draft_id: int, phone: str) -> dict:
+    """Record the supplier's WhatsApp number for a draft that lacks one.
+
+    The trader supplies the number (in a pilot, a consenting test recipient).
+    It is stored on the supplier and on this draft; the CONTACT_PHONE_MISSING
+    review reason is cleared, and the draft returns to DRAFT only when no
+    other review reason remains. Approved or skipped drafts are never
+    changed, and nothing is sent.
+    """
+    digits = normalize_phone_digits(phone)
+    if digits is None:
+        raise ValueError("Enter a WhatsApp number with country code, e.g. +91 98765 43210.")
+    draft = get_followup_draft(draft_id)
+    if draft is None:
+        raise KeyError(f"follow-up draft {draft_id} not found")
+    if draft["status"] not in (followups.STATUS_DRAFT, followups.STATUS_NEEDS_REVIEW):
+        raise ValueError(
+            f"draft {draft_id} is {draft['status']}; its recipient can no longer change"
+        )
+    number = "+" + digits
+    remaining = [
+        reason for reason in draft["review_reasons"]
+        if reason != followups.REASON_CONTACT_PHONE_MISSING
+    ]
+    new_status = followups.STATUS_NEEDS_REVIEW if remaining else followups.STATUS_DRAFT
+    conn = get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE suppliers SET contact_phone = ? WHERE id = ?",
+                (number, draft["supplier_id"]),
+            )
+            conn.execute(
+                """UPDATE followup_drafts
+                   SET contact_phone = ?, channel_available = 1,
+                       review_reasons = ?, status = ?, updated_at = datetime('now')
+                   WHERE id = ?""",
+                (number, json.dumps(remaining), new_status, draft_id),
+            )
+            _record_followup_event(
+                conn, draft_id, event_type="EDITED",
+                from_status=draft["status"], to_status=new_status,
+                note="WhatsApp number added by the trader; nothing sent",
+            )
+            if new_status != draft["status"]:
+                _record_followup_event(
+                    conn, draft_id, event_type="STATUS_CHANGED",
+                    from_status=draft["status"], to_status=new_status,
+                    note="Contact number now available",
+                )
+    finally:
+        conn.close()
+    return get_followup_draft(draft_id)
 
 
 def skip_followup_draft(draft_id: int) -> None:

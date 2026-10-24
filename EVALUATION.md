@@ -165,11 +165,17 @@ phone number on file. No contact details were invented.
 
 ## Not measured
 
-- **Extraction accuracy:** no OCR or invoice-extraction pipeline exists, so
-  this metric is `null`, not `0` and not `100%`.
-- **Real GST portal compatibility:** no authorized genuine portal export is
-  in the repository. The supported input is the normalized schema
-  documented in `gstr2b.py`.
+- **Extraction accuracy in this benchmark:** this reconciliation benchmark
+  starts from structured invoice rows, so it measures no extraction. The
+  WhatsApp agent does have a vision extraction pipeline (`agent/extract.py`);
+  its evaluation is section 2 of the agent evaluation below, and so far only
+  a 3-image partial run exists.
+- **Real GST portal compatibility:** the web importer parses GST-portal
+  GSTR-2B JSON (`data.docdata.b2b`) and portal Excel exports
+  (`gstr2b_portal.py`), and the agent has its own portal JSON reader
+  (`agent/twob.py`). Both are tested only on synthetic portal-shaped files;
+  no authorized genuine portal export is in the repository. Printed-PDF
+  GSTR-2B is not supported.
 - **Live GSTIN validity, ITC eligibility or supplier non-filing:** GSTIN
   checks are syntax/checksum only. `MISSING_FROM_2B` means only that no
   usable counterpart exists in the selected batch.
@@ -181,12 +187,12 @@ phone number on file. No contact details were invented.
 
 ## Limitations and next validation step
 
-The largest unverified area is input compatibility with actual authorized
-GST portal exports. The next step is to add anonymized, legally obtained
-sample layouts and a consenting pilot workflow, then repeat this evaluation
-on a genuinely held-out real-world set. Until then, MILAAN should be
-described as a deterministic normalized-file prototype, not a
-portal-integrated production system.
+The largest unverified areas are input compatibility with actual authorized
+GST portal exports and extraction accuracy on real bill photographs. The next
+step is to add anonymized, legally obtained portal exports and consented,
+redacted bills, then repeat both evaluations on a genuinely held-out set.
+Until then, MILAAN's portal parsing should be described as tested on
+synthetic portal-shaped files, not validated on real exports.
 
 
 ---
@@ -306,3 +312,29 @@ the 9/9 above is not a figure from `agent_data/eval/`.
 Every LLM call's token usage is written to the trace (`usage`). Cost per bill comes from the
 extraction eval. Cost per month ≈ bills × cost per bill, plus planner turns, plus Twilio
 messages (sandbox: free).
+
+## Round 2 reproduction record (2026-10-24)
+
+Re-run on a temporary database for each script; committed result files were
+not overwritten.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Diagnosis eval, B0 / B2 / MILAAN, seeds 7, 11, 23 | `python -m agent.eval.diagnosis_eval --seed N --out /tmp/...` | Output identical to `agent_data/eval/diagnosis_*.json` for all three seeds |
+| Reconciliation policy eval | `python reconciliation_eval.py` | 22 / 22 scenarios, 10 / 10 file scenarios, 0 false matches, precision 1.00, recall 1.00 |
+| Matching benchmark vs exact-key baseline | `python benchmark.py` | MILAAN precision 1.00 / recall 1.00; baseline precision 0.50 / recall 1.00 |
+| Agent demo cycle, offline fixture reader | `python -m agent.simulate --script demo --offline` | Completed: targeted GSTIN re-ask, GSTIN conflict routed to the trader, approval gate, next-month 2B → 3 bills / ₹16,362 RECOVERED |
+| B1 single-shot LLM baseline | `python -m agent.eval.b1_single_shot` | **Not re-run**: no LLM API key on this machine. The only result is the 1-run file from 2026-10-22 above |
+| Extraction eval (49 images) | `python -m agent.eval.extraction_eval --run` | **Not re-run**: no LLM API key. Only the 3-image partial run exists |
+| Workspace demo, browser | `node scripts/demo_e2e.js` (see DEMO.md) | 25 / 25 checks: import → reconcile → approve → simulated send → next-cycle 2B → Resolved; no console errors |
+| WhatsApp Web bridge live send | Settings → Send test message (to the configured, self-owned test number) | **Not verified.** 2 attempts; `whatsapp-web.js` 1.34.7 returned no message id both times, so the outcome is unknown (now recorded as `UNKNOWN`, never retried automatically). WhatsApp Cloud API is not configured, so no supplier delivery was attempted |
+
+**Gap against the Round 1 evaluation plan.** The plan described about 150 bill
+photographs labelled independently by both authors with agreement reported,
+and a mismatch-detection precision/recall on paired bill-set and 2B cases.
+What exists is 49 synthetic rendered bills (single-labelled by construction),
+the synthetic diagnosis benchmark (800 invoices per seed) and the
+reconciliation scenarios above. Task-completion rate and rupees recovered are
+reported for the scripted demo only, not as a measured rate. Cost per
+trader-month is instrumented (token usage is written to the trace) but has
+not been measured on a full run.

@@ -51,6 +51,8 @@ LOCK_FILE = RUN_DIR / "launcher.lock"
 WA_SESSION_DIR = ROOT / "whatsapp_service" / ".wwebjs_auth"
 LOG_ROTATE_BYTES = 10 * 1024 * 1024
 TRUE_VALUES = {"1", "true", "yes", "on"}
+DEMO_DATABASE = ROOT / "demo" / "sarcathon_demo.db"
+DEMO_AGENT_DATABASE = ROOT / "demo" / "sarcathon_agent.db"
 
 
 @dataclass(frozen=True)
@@ -238,6 +240,13 @@ def drop_stale_state(service: Service) -> bool:
 
 # --- start -----------------------------------------------------------------
 
+def database_for(env: dict[str, str]) -> str:
+    """The operational database a website started with this env would use."""
+    configured = (env.get("DATABASE_PATH") or "milaan.db").strip()
+    path = Path(configured).expanduser()
+    return str(path if path.is_absolute() else (ROOT / path).resolve())
+
+
 def spawn(service: Service, argv: list[str], env: dict[str, str], port: int | None) -> int:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     rotate_log(service.log_file)
@@ -271,6 +280,7 @@ def spawn(service: Service, argv: list[str], env: dict[str, str], port: int | No
             "port": port,
             "log": short(service.log_file),
             "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "database": database_for(env) if service is WEB else None,
         },
     )
     return process.pid
@@ -432,6 +442,12 @@ class StartRun:
     def start_web(self, port: int) -> bool:
         pid = owned_pid(WEB)
         if pid:
+            running_db = (read_state(WEB) or {}).get("database")
+            wanted_db = database_for(self.env)
+            if running_db and running_db != wanted_db:
+                say(f"  ✗ {WEB.label}: already running with {short(Path(running_db))}, "
+                    f"not {short(Path(wanted_db))}. Run ./stop_milaan_demo.sh first.")
+                return False
             if web_healthy(port):
                 say(f"  ✓ {WEB.label}: already running (PID {pid}, port {port})")
                 return True
@@ -480,8 +496,13 @@ def cmd_start(args: argparse.Namespace) -> int:
             return 1
 
         env = load_env()
+        if args.demo_db:
+            # A separate, disposable demo workspace: never the real milaan.db.
+            env["DATABASE_PATH"] = str(DEMO_DATABASE)
+            env["AGENT_DB_PATH"] = str(DEMO_AGENT_DATABASE)
         python = sys.executable
         say("Starting MILAAN demo services in the background...")
+        say(f"  · database: {short(Path(database_for(env)))}")
         run = StartRun(python, env)
         run.start_whatsapp_web(args.show_browser)
         run.start_webhook()
@@ -547,6 +568,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     say(f"{WEB.label}")
     say(f"  process: {text}")
     say(f"  url:     http://127.0.0.1:{port}/   → {health}")
+    if state.get("database"):
+        say(f"  database: {short(Path(state['database']))}")
     say(f"  log:     {short(WEB.log_file)}")
     say("")
 
@@ -707,6 +730,8 @@ def main() -> int:
     start.add_argument("--port", type=int, default=8501)
     start.add_argument("--with-agent", action="store_true",
                        help="also start the optional inbound agent server")
+    start.add_argument("--demo-db", action="store_true",
+                       help="use the disposable demo workspace demo/sarcathon_demo.db instead of milaan.db")
     start.add_argument("--show-browser", action="store_true",
                        help="keep MILAAN_WA_HEADLESS from .env instead of forcing a hidden browser")
     status = sub.add_parser("status")

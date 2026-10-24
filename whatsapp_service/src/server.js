@@ -37,7 +37,14 @@ function readBody(req) {
   });
 }
 
-function createServer({ config, state, adapter }) {
+// Long digit runs (phone numbers, chat ids) are masked before logging.
+function maskForLog(text) {
+  return String(text || '')
+    .replace(/\d{6,}/g, (digits) => `••••${digits.slice(-4)}`)
+    .slice(0, 300);
+}
+
+function createServer({ config, state, adapter, logger = console.error }) {
   const connectionState = state || new ConnectionState();
   const clientAdapter = adapter || {
     async sendText() {
@@ -111,7 +118,15 @@ function createServer({ config, state, adapter }) {
         if (error && error.code === 'NOT_READY') {
           return sendJson(res, 409, { ok: false, error: 'not_ready' });
         }
-        return sendJson(res, 502, { ok: false, error: 'send_failed' });
+        // Keep the cause diagnosable in the service log (never the message
+        // text, the token or an unmasked number); the HTTP reply stays generic.
+        logger(
+          `MILAAN WhatsApp send failed: ${maskForLog(error && error.name)}: `
+            + maskForLog(error && error.message)
+        );
+        // The client may have handed the message to WhatsApp before failing
+        // (e.g. no message id returned), so the outcome is not "failed".
+        return sendJson(res, 502, { ok: false, error: 'send_outcome_unknown' });
       }
     }
 
@@ -129,4 +144,4 @@ function createServer({ config, state, adapter }) {
   return server;
 }
 
-module.exports = { createServer, MAX_BODY_BYTES };
+module.exports = { createServer, maskForLog, MAX_BODY_BYTES };

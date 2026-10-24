@@ -109,7 +109,11 @@ window needs to stay open, use the background launcher instead:
 ./start_milaan_demo.sh     # starts the UI (and the WhatsApp Web bridge when enabled) detached
 ./status_milaan_demo.sh    # health of every component, ports and log paths
 ./stop_milaan_demo.sh      # stops only the processes this launcher started
+./start_milaan_demo.sh --demo-db   # same, but on the disposable demo/sarcathon_demo.db
 ```
+
+`--demo-db` never touches `milaan.db`; the header then reads "Demo Database".
+The SARCathon walkthrough is in [DEMO.md](DEMO.md).
 
 Processes run in their own sessions (they survive closing the Terminal), PID
 and start-time records live in `.run/demo/`, and logs in `logs/demo/`

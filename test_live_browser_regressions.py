@@ -525,6 +525,13 @@ class FrontendLiveDataTests(PageScriptTestCase):
         self.assertEqual(m["counts"]["total"], 4)
         self.assertEqual(m["counts"]["ineligible"], 1)
 
+    def test_recovered_itc_comes_only_from_verified_follow_ups(self):
+        m = self.run_js("""(S.data.followups = [
+            {supplier:'S1', gstin:'G1', periods:['2026-04'], invoices:1, gst:1500, workflow_status:'RESOLVED'},
+            {supplier:'S2', gstin:'G2', periods:['2026-03'], invoices:1, gst:8100, workflow_status:'IN_PROGRESS'}],
+            (({recoveredGst, recoveredCount}) => ({recoveredGst, recoveredCount}))(dashboardModel()))""")
+        self.assertEqual(m, {"recoveredGst": 1500, "recoveredCount": 1})
+
     def test_dashboard_filters_change_every_figure(self):
         m = self.model("{period: '2026-03'}")
         self.assertEqual((m["eligibleCount"], m["matchedCount"], m["mismatchCount"], m["missingCount"]), (2, 1, 1, 0))

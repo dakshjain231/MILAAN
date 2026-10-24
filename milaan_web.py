@@ -100,13 +100,14 @@ def _csv_cell(value: Any) -> str:
 
 def _database_metadata() -> dict:
     path = db.get_database_path()
-    demo_path = (ROOT / "demo" / "milaan_demo.db").resolve()
+    demo_dir = (ROOT / "demo").resolve()
     agent = agent_views.database_info()
     return {
         "path": str(path),
         "name": path.name,
         "exists": path.is_file(),
-        "demo": path == demo_path,
+        # Any workspace stored under demo/ is a disposable demo database.
+        "demo": path.resolve().parent == demo_dir,
         "agent_path": agent["path"],
         "agent_exists": agent["exists"],
     }
@@ -960,17 +961,20 @@ def create_app() -> Flask:
         except ValueError as exc:
             return _error(str(exc))
         duplicates = db.find_gstr2b_imports_by_hash(parsed.file_hash)
+        def issues(row, items):
+            return [{"code": i.code, "field": i.field, "message": i.message} for i in items]
+
         rejected = [
-            {
-                "row": row.row_number,
-                "invoice": row.invoice_number,
-                "errors": [
-                    {"code": issue.code, "field": issue.field, "message": issue.message}
-                    for issue in row.errors
-                ],
-            }
+            {"row": row.row_number, "invoice": row.invoice_number, "errors": issues(row, row.errors)}
             for row in parsed.rows
-            if row.validation_status != "valid"
+            if row.validation_status == "invalid"
+        ]
+        # Rows that need review are imported (shown as "Check required") but
+        # are never auto-matched; e.g. an invoice reported in a later period.
+        review = [
+            {"row": row.row_number, "invoice": row.invoice_number, "errors": issues(row, row.warnings)}
+            for row in parsed.rows
+            if row.validation_status == "needs_review"
         ]
         return jsonify(
             {
@@ -978,6 +982,7 @@ def create_app() -> Flask:
                 "format": parsed.source_format,
                 "total": len(parsed.rows),
                 "accepted": sum(1 for row in parsed.rows if row.validation_status == "valid"),
+                "review": review,
                 "rejected": rejected,
                 "duplicates": [
                     {"id": item["id"], "file": item["file_name"], "at": item["imported_at"]}
@@ -1136,6 +1141,28 @@ def create_app() -> Flask:
             return _error("Follow-up draft not found.", 404)
         except ValueError as exc:
             return _error(str(exc))
+        return jsonify(detail)
+
+    @app.post("/api/followups/<int:draft_id>/contact-phone")
+    def followup_contact_phone(draft_id: int):
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or not isinstance(payload.get("contact_phone"), str):
+            return _error("contact_phone is required.")
+        try:
+            db.set_followup_contact_phone(draft_id, payload["contact_phone"])
+            detail = _draft_detail(draft_id)
+        except KeyError:
+            return _error("Follow-up draft not found.", 404)
+        except ValueError as exc:
+            return _error(str(exc))
+        try:
+            db.record_system_audit_event(
+                actor="ui", event_type="followup_contact_added",
+                subject_type="followup_draft", subject_id=draft_id,
+                details={"phone": _mask_phone(payload["contact_phone"])},
+            )
+        except Exception:
+            pass
         return jsonify(detail)
 
     @app.post("/api/followups/<int:draft_id>/skip")

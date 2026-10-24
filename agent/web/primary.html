@@ -1430,7 +1430,13 @@ function dashboardModel() {
   const matched = by(["MATCHED"]);
   const mismatch = by(["AMOUNT_MISMATCH", "NEEDS_REVIEW", "ITC_UNAVAILABLE"]);
   const missing = by(["MISSING_FROM_2B"]);
+  // Recovered = follow-ups whose later-GSTR-2B evidence is VERIFIED.
+  const resolved = ((S.data && S.data.followups) || []).filter(d =>
+    d.workflow_status === "RESOLVED" && (!f.supplier || d.supplier === f.supplier) &&
+    (!f.gstin || d.gstin === f.gstin) && (!f.period || (d.periods || []).includes(f.period)));
   return {
+    recoveredGst: resolved.reduce((a, d) => a + (Number(d.gst) || 0), 0),
+    recoveredCount: resolved.reduce((a, d) => a + (Number(d.invoices) || 0), 0),
     invsAll, invs, results, resultsAll,
     eligibleGst: sum(valid, "gst"), eligibleCount: valid.length,
     ineligibleGst: sum(notValid, "gst"), ineligibleCount: notValid.length,
@@ -1558,7 +1564,8 @@ function renderDashboard() {
         "Mismatches", plural(m.mismatchCount, "invoice", "invoices"), `${inr(m.mismatchGst)} ITC`,
         "Amount mismatches plus invoices that need review in the latest run")}
       ${kpi("red", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M10 12l4 4M14 12l-4 4"/></svg>',
-        "Missing from 2B", plural(m.missingCount, "invoice", "invoices"), `${inr(m.missingGst)} ITC`,
+        "Missing from 2B", plural(m.missingCount, "invoice", "invoices"),
+        `${inr(m.missingGst)} ITC` + (m.recoveredCount ? ` · ${inr(m.recoveredGst)} recovered` : ""),
         "Purchase invoices with no GSTR-2B row in the latest run")}
     </div>
 
@@ -1643,7 +1650,8 @@ function renderDashboard() {
           ${step2}
           ${step3}
           ${step(readyToSend || isDemo ? "active" : "pending", "4", "Supplier follow-ups",
-              isDemo ? "5 drafts ready to send" : `${plural(readyToSend, "draft", "drafts")} ready to send · ${pendingDrafts} awaiting review`)}
+              isDemo ? "5 drafts ready to send" : `${plural(readyToSend, "draft", "drafts")} ready to send · ${pendingDrafts} awaiting review`
+                + (m.recoveredCount ? ` · ${plural(m.recoveredCount, "invoice", "invoices")} recovered (${inr(m.recoveredGst)})` : ""))}
         </div>
         <button class="btn btn-primary" style="width:100%;margin-top:22px;justify-content:center" onclick="setView('reconciliation')">
           Continue reconciliation &rarr;
@@ -1927,9 +1935,17 @@ function renderGstr2b() {
         <div class="batch-summary">
           <span>Latest import <b>#${esc(latest.id)} · ${esc(latest.file)}</b></span>
           <span>${esc(fmtDate(latest.at))}</span>
-          <span><b>${esc(latest.accepted)}</b> accepted</span>
-          <span><b>${esc(latest.rejected)}</b> rejected</span>
-          ${latest.accepted ? "" : `<span class="badge badge-invalid">No valid rows: fix the file and import it again before reconciling</span>`}
+          ${(() => {
+            const mine = rows.filter(r => r.batch === latest.id);
+            const count = v => mine.filter(r => r.validation === v).length;
+            const valid = count("valid"), review = count("needs_review"), bad = count("invalid");
+            return `<span><b>${valid}</b> valid</span>
+              ${review ? `<span><b>${review}</b> check required</span>` : ""}
+              <span><b>${bad}</b> rejected</span>
+              ${valid ? "" : review
+                ? `<span class="badge badge-check">No fully valid rows: usable as later-statement evidence, not for reconciliation</span>`
+                : `<span class="badge badge-invalid">No valid rows: fix the file and import it again before reconciling</span>`}`;
+          })()}
         </div>` : ""}
       <table class="data-table">
         <thead>
@@ -2514,7 +2530,9 @@ async function sendWhatsAppTest() {
     const accepted = r.outcome === "ACCEPTED";
     toast(accepted
       ? "Test message accepted by WhatsApp Web (not a delivery confirmation)."
-      : `Test message not sent: ${r.error_code || r.outcome}`, accepted ? "ok" : "bad");
+      : r.outcome === "UNKNOWN"
+        ? "Outcome unknown: WhatsApp Web did not confirm the send. Check the test phone before trying again."
+        : `Test message not sent: ${r.error_code || r.outcome}`, accepted ? "ok" : "bad");
   } catch (e) {
     btn.disabled = false;
     toast(`Test message not sent: ${e.message}`, "bad");
@@ -2677,16 +2695,23 @@ async function selectUploadFile(file) {
     if (S.selectedFile !== file) return;  // a newer file was chosen meanwhile
     S.uploadPreview = p;
     const rejected = p.rejected || [];
+    const review = p.review || [];
     const dupes = p.duplicates || [];
+    const reviewNote = review.length
+      ? ` ${review.length} row(s) will be imported as <b>Check required</b> (never auto-matched):${rowErrorList(review)}`
+      : "";
     if (dupes.length) {
       showUploadNotice("bad", `This exact GSTR-2B file was already imported (batch #${esc(dupes[0].id)}). Nothing will be imported again.`);
       setUploadButton(false, "Import Now");
-    } else if (!p.accepted) {
+    } else if (!p.accepted && !review.length) {
       showUploadNotice("bad", `<b>No valid rows — nothing can be imported.</b> ${p.total} row(s) checked.${rowErrorList(rejected)}`);
       setUploadButton(false, "Import Now");
-    } else if (rejected.length) {
-      showUploadNotice("warn", `<b>${p.accepted} of ${p.total} row(s) are valid.</b> The ${rejected.length} invalid row(s) below will be rejected and not imported.${rowErrorList(rejected)}`);
-      setUploadButton(true, `Import ${p.accepted} valid row(s)`);
+    } else if (rejected.length || review.length) {
+      const rejectNote = rejected.length
+        ? ` The ${rejected.length} invalid row(s) below will be rejected and not imported.${rowErrorList(rejected)}`
+        : "";
+      showUploadNotice("warn", `<b>${p.accepted} of ${p.total} row(s) are valid.</b>${reviewNote}${rejectNote}`);
+      setUploadButton(true, `Import ${p.accepted + review.length} row(s)`);
     } else {
       showUploadNotice("ok", `<b>All ${p.total} row(s) are valid</b> and ready to import.`);
       setUploadButton(true, "Import Now");
@@ -2723,7 +2748,9 @@ async function executeModalUpload() {
     const res = await api(isGst ? "/api/gstr2b/import" : "/api/invoices/import", {method:"POST", body:fd});
     closeModal();
     if (isGst) {
-      toast(`GSTR-2B imported: ${res.accepted_rows} row(s) accepted, ${res.rejected_rows} rejected.`);
+      const review = ((S.uploadPreview && S.uploadPreview.review) || []).length;
+      toast(`GSTR-2B imported: ${res.accepted_rows} valid` + (review ? `, ${review} check required` : "")
+        + `, ${res.rejected_rows - review} rejected.`);
     } else {
       const parts = [`${res.imported} invoice(s) imported`];
       if (res.duplicates) parts.push(`${res.duplicates} already existed`);
@@ -2840,7 +2867,7 @@ function renderDraftModalContent(d) {
   const x = d.draft;
   const editable = x.status === "DRAFT" || x.status === "NEEDS_REVIEW";
   const cloudReady = !!(S.data && S.data.provider && S.data.provider.cloud);
-  const laterBatches = (d.batches || []).filter(b => b.id !== x.gstr2b_import_id);
+  const laterBatches = (d.batches || []).filter(b => b.Batch !== x.gstr2b_import_id);
   const problems = d.approval_problems || [];
   const recovery = d.recovery || {};
   const invoiceRows = (d.invoices || []).map(i => `
@@ -2862,7 +2889,18 @@ function renderDraftModalContent(d) {
         <button class="btn btn-primary" onclick="approveActiveDraft(${x.id})" ${problems.length ? "disabled" : ""}>Approve Draft</button>
       </div>`;
   } else if (x.status === "NEEDS_REVIEW") {
-    actions = `<div class="modal-actions">
+    const needsPhone = (x.review_reasons || []).includes("CONTACT_PHONE_MISSING");
+    actions = `
+      ${needsPhone ? `
+        <div class="modal-section" style="border-top:0;margin-top:0;padding-top:0">
+          <b>Supplier WhatsApp number</b>
+          <p class="muted-note">No number is on file, so this draft cannot be approved. Enter only a number that has agreed to receive this message (in a pilot, a consenting test recipient). Nothing is sent now.</p>
+          <div class="modal-actions" style="justify-content:flex-start">
+            <input class="form-input" id="draft-phone" placeholder="+91 98765 43210" style="max-width:220px">
+            <button class="btn btn-secondary" onclick="saveDraftPhone(${x.id})">Save number</button>
+          </div>
+        </div>` : ""}
+      <div class="modal-actions">
         <button class="btn btn-secondary" onclick="skipDraft(${x.id})">Skip</button>
         <button class="btn btn-secondary" onclick="saveDraftText(${x.id})">Save text</button>
       </div>`;
@@ -2885,7 +2923,7 @@ function renderDraftModalContent(d) {
         <p class="muted-note">Resolved only when every invoice appears in one later GSTR-2B import with the same GST.</p>
         ${laterBatches.length ? `
           <div class="modal-actions" style="justify-content:flex-start">
-            <select id="verify-batch" class="filter-select">${laterBatches.map(b => `<option value="${esc(b.id)}">#${esc(b.id)} · ${esc(b["File"] || b.file_name || b.file || "")}</option>`).join("")}</select>
+            <select id="verify-batch" class="filter-select">${laterBatches.map(b => `<option value="${esc(b.Batch)}">#${esc(b.Batch)} · ${esc(b.File)}</option>`).join("")}</select>
             <button class="btn btn-secondary" onclick="verifyDraft(${x.id})">Check statement</button>
             <button class="btn btn-secondary" onclick="skipDraft(${x.id})">Close follow-up</button>
           </div>` : `<p class="muted-note">Import a later GSTR-2B statement to check it.</p>`}
@@ -2951,6 +2989,14 @@ async function approveActiveDraft(id) {
   return draftAction(id, () => api(`/api/followups/${id}/approve`, {method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirmed: true})}),
     "Draft approved. Nothing was sent.");
+}
+
+function saveDraftPhone(id) {
+  const phone = $("#draft-phone").value.trim();
+  if (!phone) { toast("Enter the supplier's WhatsApp number first.", "bad"); return; }
+  return draftAction(id, () => api(`/api/followups/${id}/contact-phone`, {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({contact_phone: phone})}),
+    "Number saved. Nothing was sent.");
 }
 
 function skipDraft(id) {

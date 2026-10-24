@@ -264,6 +264,12 @@ class ProviderTests(unittest.TestCase):
         result, _ = self.send((400, body({"ok": False, "error": "invalid_recipient"})))
         self.assertEqual(result.outcome, delivery.OUTCOME_INVALID_REQUEST)
 
+    def test_ambiguous_send_failures_are_unknown_not_retryable(self):
+        for code in ("send_outcome_unknown", "missing_message_id", "send_failed"):
+            result, _ = self.send((502, body({"ok": False, "error": code})))
+            self.assertEqual(result.outcome, delivery.OUTCOME_UNKNOWN, code)
+            self.assertIn("may or may not", result.error_message)
+
     def test_transient_failures_are_retryable(self):
         for status in (429, 500, 503):
             result, _ = self.send((status, body({"ok": False, "error": "busy"})))

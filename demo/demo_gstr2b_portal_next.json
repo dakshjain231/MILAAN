@@ -1,0 +1,20 @@
+{
+  "_comment": "Synthetic next-cycle GSTR-2B (October 2026 return) for the MILAAN demo. DEMO-105 was dated September but reported late by its supplier, so it appears here: use it with 'Check a later GSTR-2B statement' on the approved follow-up to show recovery. Fictional GSTINs; never use for filing.",
+  "data": {
+    "gstin": "08ABCDE1234F1Z0",
+    "rtnprd": "102026",
+    "docdata": {
+      "b2b": [
+        {
+          "ctin": "08UVWXY9876A1ZG",
+          "trdnm": "(Synthetic) Demo Umang Electricals",
+          "supprd": "102026",
+          "inv": [
+            {"inum": "DEMO-105", "dt": "18-09-2026", "val": 3776, "itcavl": "Y", "rev": "N",
+             "items": [{"num": 1, "rt": 18, "txval": 3200, "cgst": 288, "sgst": 288}]}
+          ]
+        }
+      ]
+    }
+  }
+}

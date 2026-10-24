@@ -18,7 +18,8 @@ async function start(t, options = {}) {
       return { messageId: 'wamid.test.1' };
     },
   };
-  const server = createServer({ config: makeConfig(), state, adapter });
+  const logger = options.logger || (() => {});
+  const server = createServer({ config: makeConfig(), state, adapter, logger });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const { port } = server.address();
@@ -139,6 +140,33 @@ test('send does not leak client errors', async (t) => {
   const text = await response.text();
   assert.equal(response.status, 502);
   assert.equal(text.includes('internal secret details'), false);
+});
+
+test('send failures are logged with numbers masked and no message text', async (t) => {
+  const state = new ConnectionState();
+  state.set('ready', { phone: '919999999999' });
+  const lines = [];
+  const { base } = await start(t, {
+    state,
+    logger: (line) => lines.push(line),
+    adapter: {
+      async sendText() {
+        throw new TypeError('No LID for user 919812345678@c.us');
+      },
+    },
+  });
+  const response = await fetch(`${base}/send`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ to: '919812345678', message: 'Private invoice text' }),
+  });
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error, 'send_outcome_unknown');
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /send failed: TypeError: No LID for user ••••5678@c\.us/);
+  assert.equal(lines[0].includes('919812345678'), false);
+  assert.equal(lines[0].includes('Private invoice text'), false);
+  assert.equal(lines[0].includes(TOKEN), false);
 });
 
 test('unknown routes return 404', async (t) => {
