@@ -25,6 +25,7 @@ integer percent (0, 5, 12, 18 or 28).
 
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from contextlib import contextmanager
@@ -143,7 +144,7 @@ CREATE TABLE IF NOT EXISTS gstr2b_imports (
     file_name TEXT NOT NULL,
     file_hash TEXT NOT NULL,
     file_size INTEGER NOT NULL CHECK (file_size >= 0),
-    source_format TEXT NOT NULL CHECK (source_format IN ('csv', 'xlsx')),
+    source_format TEXT NOT NULL CHECK (source_format IN ('csv', 'xlsx', 'json')),
     total_rows INTEGER NOT NULL DEFAULT 0 CHECK (total_rows >= 0),
     accepted_rows INTEGER NOT NULL DEFAULT 0 CHECK (accepted_rows >= 0),
     rejected_rows INTEGER NOT NULL DEFAULT 0 CHECK (rejected_rows >= 0),
@@ -596,8 +597,37 @@ def db():
     try:
         yield conn
         conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
     finally:
         conn.close()
+
+
+def backup_database(destination: Path | None = None, *, label: str = "backup") -> Path:
+    """Write a consistent, integrity-checked copy of the operational database.
+
+    Uses SQLite's online backup API, so it is safe while MILAAN is running.
+    The default destination is a ``backups`` directory next to the database.
+    An existing file is never overwritten.
+    """
+    source = get_database_path()
+    if not source.exists():
+        raise ValueError(f"database does not exist: {source}")
+    target_dir = Path(destination) if destination is not None else source.parent / "backups"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    safe_label = re.sub(r"[^a-z0-9_-]+", "-", label.lower()).strip("-") or "backup"
+    target = target_dir / f"milaan-{safe_label}-{stamp}.sqlite3"
+    if target.exists():
+        raise ValueError(f"refusing to overwrite existing backup: {target}")
+    with sqlite3.connect(source) as source_conn, sqlite3.connect(target) as target_conn:
+        source_conn.backup(target_conn)
+    with sqlite3.connect(target) as check:
+        if check.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            target.unlink(missing_ok=True)
+            raise ValueError("backup integrity check failed; nothing was changed")
+    return target
 
 
 def _legacy_suppliers_table(conn: sqlite3.Connection) -> bool:
@@ -953,8 +983,68 @@ def init_db() -> None:
             _migrate_two_way_reconciliation(conn)
             conn.executescript(RECONCILIATION_INDEX_DDL)
         _repair_legacy_followup_foreign_keys(conn)
+        if _needs_gstr2b_json_format_migration(conn):
+            _migrate_gstr2b_json_format(conn)
+            conn.executescript(GSTR2B_INDEX_DDL)
     finally:
         conn.close()
+
+
+def _needs_gstr2b_json_format_migration(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'gstr2b_imports'"
+    ).fetchone()
+    return row is not None and "'json'" not in (row["sql"] or "")
+
+
+def _migrate_gstr2b_json_format(conn: sqlite3.Connection) -> None:
+    """Allow ``source_format = 'json'`` on an existing gstr2b_imports table.
+
+    SQLite cannot alter a CHECK constraint, so the table is rebuilt with the
+    documented safe order: create the new table, copy, drop the old table,
+    rename the new one into place. Renaming the *new* table (rather than the
+    old one) keeps every child foreign key pointing at ``gstr2b_imports``.
+    A verified backup is written first; the rebuild runs in one transaction
+    and is rolled back unless row counts and foreign keys still check out.
+    Foreign keys are disabled by the caller during init.
+    """
+    count = conn.execute("SELECT COUNT(*) FROM gstr2b_imports").fetchone()[0]
+    if count:
+        backup_database(label="pre-gstr2b-json-migration")
+    columns = [
+        row["name"] for row in conn.execute("PRAGMA table_info(gstr2b_imports)")
+    ]
+    new_ddl = GSTR2B_IMPORTS_DDL.replace(
+        "CREATE TABLE IF NOT EXISTS gstr2b_imports (",
+        "CREATE TABLE gstr2b_imports_new (",
+    )
+    column_list = ", ".join(columns)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(new_ddl)
+        new_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(gstr2b_imports_new)")
+        }
+        if set(columns) - new_columns:
+            raise RuntimeError(
+                "gstr2b_imports has columns the migration does not know: "
+                + ", ".join(sorted(set(columns) - new_columns))
+            )
+        conn.execute(
+            f"INSERT INTO gstr2b_imports_new ({column_list}) "
+            f"SELECT {column_list} FROM gstr2b_imports"
+        )
+        copied = conn.execute("SELECT COUNT(*) FROM gstr2b_imports_new").fetchone()[0]
+        if copied != count:
+            raise RuntimeError("gstr2b_imports row count changed during migration")
+        conn.execute("DROP TABLE gstr2b_imports")
+        conn.execute("ALTER TABLE gstr2b_imports_new RENAME TO gstr2b_imports")
+        if conn.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("foreign key check failed after gstr2b_imports migration")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def is_db_ready() -> bool:
@@ -1766,7 +1856,8 @@ def reconcile_gstr2b_import(
     ):
         raise ValueError(
             f"GSTR-2B batch {gstr2b_import_id} has no usable (valid) rows; "
-            "reconciliation was not started."
+            "reconciliation was not started. Review the rejected rows on the "
+            "GSTR-2B Import page and import a corrected GSTR-2B file."
         )
 
     results = reconciliation.reconcile_batch(invoices, rows, config=config)

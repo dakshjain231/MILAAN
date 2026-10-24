@@ -11,6 +11,7 @@ Run:
 from __future__ import annotations
 
 import csv
+import hmac
 import io
 import json
 import os
@@ -19,22 +20,30 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from flask import Flask, Response, jsonify, request
+from werkzeug.security import check_password_hash
 
 import agent_views
 import db
 import delivery
+import followups
 import gstr2b
 import invoice_import
 import report_workbook
+import security
 import service_health
+import validation
 import webjs
 
 ROOT = Path(__file__).resolve().parent
 PAGE = ROOT / "agent" / "web" / "primary.html"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_ROWS = 5000
+DEFAULT_ALLOWED_HOSTS = ("127.0.0.1", "localhost", "::1", "[::1]")
+ORG_FIELDS = ("company_name", "gstin", "email", "phone")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _HEALTH_LOCK = threading.Lock()
 _HEALTH_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
 
@@ -138,7 +147,7 @@ def _invoices() -> list[dict]:
             """SELECT i.id, i.invoice_number, i.invoice_date, i.tax_period,
                       i.taxable_value, i.gst_rate, i.cgst, i.sgst, i.igst,
                       i.total_gst, i.invoice_total, i.source,
-                      i.validation_status, i.case_status,
+                      i.validation_status, i.case_status, i.created_at,
                       s.supplier_name, s.gstin, s.contact_phone
                FROM invoices i
                LEFT JOIN suppliers s ON s.id = i.supplier_id
@@ -163,6 +172,7 @@ def _invoices() -> list[dict]:
             "source": row["source"],
             "validation": row["validation_status"],
             "case": row["case_status"],
+            "created": row["created_at"],
         }
         for row in rows
     ]
@@ -204,12 +214,13 @@ def _gstr2b() -> dict:
         # Return rows for every visible batch so selecting an older batch in
         # the UI never shows an empty evidence table. MAX_ROWS bounds payload.
         rows = conn.execute(
-            """SELECT id, import_id, row_number, supplier_gstin,
-                      invoice_number, invoice_date, tax_period,
-                      taxable_value, cgst, sgst, igst, total_gst,
-                      validation_status, errors
-               FROM gstr2b_rows
-               ORDER BY import_id DESC, row_number LIMIT ?""",
+            """SELECT r.id, r.import_id, r.row_number, r.supplier_gstin,
+                      r.invoice_number, r.invoice_date, r.tax_period,
+                      r.taxable_value, r.cgst, r.sgst, r.igst, r.total_gst,
+                      r.validation_status, r.errors, sp.supplier_name
+               FROM gstr2b_rows r
+               LEFT JOIN suppliers sp ON sp.gstin = r.supplier_gstin
+               ORDER BY r.import_id DESC, r.row_number LIMIT ?""",
             (MAX_ROWS,),
         ).fetchall()
     return {
@@ -234,6 +245,7 @@ def _gstr2b() -> dict:
                 "batch": row["import_id"],
                 "row": row["row_number"],
                 "gstin": row["supplier_gstin"] or "",
+                "supplier": row["supplier_name"] or "",
                 "number": row["invoice_number"] or "",
                 "date": row["invoice_date"] or "",
                 "period": row["tax_period"] or "",
@@ -250,6 +262,75 @@ def _gstr2b() -> dict:
     }
 
 
+def _result_rows(conn, run_id: int) -> list:
+    """Invoice-level results of one run with both sides' stored values.
+
+    The GSTR-2B side is read from the matched ``gstr2b_rows`` row; when no
+    row is attached its values stay NULL instead of being estimated. Rows
+    found only in GSTR-2B (``IN_2B_NOT_IN_BOOKS``) have no purchase-register
+    side, so those values stay NULL too.
+    """
+    return conn.execute(
+        """SELECT rr.id, rr.invoice_id, rr.gstr2b_row_id, rr.match_status,
+                  rr.match_method, rr.amount_difference_paise, rr.reason_codes,
+                  rr.tax_period, rr.invoice_total_gst_paise,
+                  rr.gstr2b_invoice_number, rr.gstr2b_total_gst_paise,
+                  COALESCE(i.invoice_number, rr.invoice_number) AS invoice_number,
+                  i.invoice_date,
+                  i.taxable_value AS invoice_taxable_paise,
+                  i.invoice_total AS invoice_total_paise,
+                  COALESCE(s.gstin, rr.supplier_gstin) AS supplier_gstin,
+                  COALESCE(s.supplier_name, known.supplier_name) AS supplier_name,
+                  g.taxable_value AS twob_taxable_paise,
+                  g.invoice_date AS twob_invoice_date
+           FROM reconciliation_results rr
+           LEFT JOIN invoices i ON i.id = rr.invoice_id
+           LEFT JOIN suppliers s ON s.id = i.supplier_id
+           LEFT JOIN suppliers known ON known.gstin = rr.supplier_gstin
+           LEFT JOIN gstr2b_rows g ON g.id = rr.gstr2b_row_id
+           WHERE rr.run_id = ?
+           ORDER BY rr.invoice_id IS NULL,
+                    COALESCE(i.invoice_date, g.invoice_date),
+                    COALESCE(i.invoice_number, rr.invoice_number)""",
+        (run_id,),
+    ).fetchall()
+
+
+def _result_view(row) -> dict:
+    invoice_taxable = row["invoice_taxable_paise"]
+    twob_taxable = row["twob_taxable_paise"]
+    taxable_difference = (
+        invoice_taxable - twob_taxable
+        if invoice_taxable is not None and twob_taxable is not None
+        else None
+    )
+    return {
+        "id": row["id"],
+        "invoice_id": row["invoice_id"],
+        "number": row["invoice_number"],
+        "date": row["invoice_date"] or row["twob_invoice_date"],
+        "supplier": row["supplier_name"] or "",
+        "gstin": row["supplier_gstin"] or "",
+        "period": row["tax_period"] or "",
+        "invoice_taxable": _rupees(invoice_taxable),
+        "invoice_total": _rupees(row["invoice_total_paise"]),
+        "invoice_gst": (
+            _rupees(row["invoice_total_gst_paise"]) if row["invoice_id"] is not None else None
+        ),
+        "status": row["match_status"],
+        "method": row["match_method"],
+        "row_id": row["gstr2b_row_id"],
+        "twob_number": row["gstr2b_invoice_number"] or "",
+        "twob_date": row["twob_invoice_date"],
+        "twob_taxable": _rupees(twob_taxable),
+        "twob_gst": _rupees(row["gstr2b_total_gst_paise"]),
+        # Signed invoice minus GSTR-2B, as computed by the engine.
+        "taxable_difference": _rupees(taxable_difference),
+        "difference": _rupees(row["amount_difference_paise"]),
+        "reasons": _json_list(row["reason_codes"]),
+    }
+
+
 def _reconciliation() -> dict:
     with db.db() as conn:
         runs = conn.execute(
@@ -261,15 +342,7 @@ def _reconciliation() -> dict:
         latest = next((row for row in runs if row["is_latest"]), None)
         results = []
         if latest is not None:
-            results = conn.execute(
-                """SELECT rr.*, i.invoice_number, s.gstin AS supplier_gstin,
-                          s.supplier_name
-                   FROM reconciliation_results rr
-                   JOIN invoices i ON i.id = rr.invoice_id
-                   LEFT JOIN suppliers s ON s.id = i.supplier_id
-                   WHERE rr.run_id = ? ORDER BY i.invoice_date, i.invoice_number""",
-                (latest["id"],),
-            ).fetchall()
+            results = _result_rows(conn, latest["id"])
     return {
         "runs": [
             {
@@ -306,25 +379,7 @@ def _reconciliation() -> dict:
             if latest is not None
             else None
         ),
-        "results": [
-            {
-                "id": row["id"],
-                "invoice_id": row["invoice_id"],
-                "number": row["invoice_number"],
-                "supplier": row["supplier_name"] or "",
-                "gstin": row["supplier_gstin"] or "",
-                "period": row["tax_period"] or "",
-                "invoice_gst": _rupees(row["invoice_total_gst_paise"]),
-                "status": row["match_status"],
-                "method": row["match_method"],
-                "row_id": row["gstr2b_row_id"],
-                "twob_number": row["gstr2b_invoice_number"] or "",
-                "twob_gst": _rupees(row["gstr2b_total_gst_paise"]),
-                "difference": _rupees(row["amount_difference_paise"]),
-                "reasons": _json_list(row["reason_codes"]),
-            }
-            for row in results
-        ],
+        "results": [_result_view(row) for row in results],
     }
 
 
@@ -334,16 +389,7 @@ def _reconciliation_run(run_id: int) -> dict:
     if run is None:
         raise KeyError(f"reconciliation run {run_id} not found")
     with db.db() as conn:
-        results = conn.execute(
-            """SELECT rr.*, i.invoice_number, s.gstin AS supplier_gstin,
-                      s.supplier_name
-               FROM reconciliation_results rr
-               JOIN invoices i ON i.id = rr.invoice_id
-               LEFT JOIN suppliers s ON s.id = i.supplier_id
-               WHERE rr.run_id = ?
-               ORDER BY i.invoice_date, i.invoice_number""",
-            (run_id,),
-        ).fetchall()
+        results = _result_rows(conn, run_id)
     return {
         "run": {
             "id": run["id"],
@@ -359,26 +405,21 @@ def _reconciliation_run(run_id: int) -> dict:
             "review": run["needs_review_count"],
             "not_eligible": run["not_eligible_count"],
         },
-        "results": [
-            {
-                "id": row["id"],
-                "invoice_id": row["invoice_id"],
-                "number": row["invoice_number"],
-                "supplier": row["supplier_name"] or "",
-                "gstin": row["supplier_gstin"] or "",
-                "period": row["tax_period"] or "",
-                "invoice_gst": _rupees(row["invoice_total_gst_paise"]),
-                "status": row["match_status"],
-                "method": row["match_method"],
-                "row_id": row["gstr2b_row_id"],
-                "twob_number": row["gstr2b_invoice_number"] or "",
-                "twob_gst": _rupees(row["gstr2b_total_gst_paise"]),
-                "difference": _rupees(row["amount_difference_paise"]),
-                "reasons": _json_list(row["reason_codes"]),
-            }
-            for row in results
-        ],
+        "results": [_result_view(row) for row in results],
     }
+
+
+def _draft_issue_codes(reasons: list[str]) -> list[str]:
+    """Reconciliation statuses behind a draft, e.g. ``MISSING_FROM_2B``.
+
+    Draft invoice reasons are stored as ``<match status>:<reason code>``.
+    """
+    codes = []
+    for reason in reasons:
+        code = str(reason or "").split(":", 1)[0].strip()
+        if code and code not in codes:
+            codes.append(code)
+    return codes
 
 
 def _draft_rows() -> list[dict]:
@@ -389,26 +430,61 @@ def _draft_rows() -> list[dict]:
                        WHERE di.draft_id = d.id) AS invoice_count
                FROM followup_drafts d ORDER BY d.id DESC"""
         ).fetchall()
-    return [
-        {
-            "id": row["id"],
-            "supplier": row["supplier_name"],
-            "gstin": row["supplier_gstin"] or "",
-            "phone": _mask_phone(row["contact_phone"]),
-            "run": row["reconciliation_run_id"],
-            "batch": row["gstr2b_import_id"],
-            "status": row["status"],
-            "channel": "available" if row["channel_available"] else "unavailable",
-            "invoices": row["invoice_count"],
-            "taxable": _rupees(row["total_taxable_value_paise"]),
-            "gst": _rupees(row["total_gst_paise"]),
-            "reasons": _json_list(row["review_reasons"]),
-            "created": row["created_at"],
-            "updated": row["updated_at"],
-            "approved_at": row["approved_at"],
-        }
-        for row in rows
-    ]
+        reasons: dict[int, list[str]] = {}
+        periods: dict[int, set[str]] = {}
+        for item in conn.execute(
+            "SELECT draft_id, reason, tax_period FROM followup_draft_invoices ORDER BY id"
+        ):
+            reasons.setdefault(item["draft_id"], []).append(item["reason"])
+            if item["tax_period"]:
+                periods.setdefault(item["draft_id"], set()).add(item["tax_period"])
+        # Only real (non-mock) sends count as a follow-up having happened.
+        contact: dict[int, dict] = {}
+        for item in conn.execute(
+            """SELECT followup_draft_id AS draft_id,
+                      MAX(sent_at) AS last_sent,
+                      MIN(CASE WHEN status = 'RETRY_PENDING'
+                               THEN next_attempt_at END) AS next_attempt
+               FROM message_deliveries
+               WHERE provider != ?
+               GROUP BY followup_draft_id""",
+            (delivery.PROVIDER_MOCK,),
+        ):
+            contact[item["draft_id"]] = dict(item)
+    views = []
+    for row in rows:
+        recovery = db.get_followup_recovery_status(row["id"])["status"]
+        sent = contact.get(row["id"], {})
+        views.append({
+            "workflow_status": followups.followup_workflow_status(row["status"], recovery),
+            "recovery_status": recovery,
+            "issues": _draft_issue_codes(reasons.get(row["id"], [])),
+            "periods": sorted(periods.get(row["id"], ())),
+            "last_followup": sent.get("last_sent"),
+            "next_followup": sent.get("next_attempt"),
+            **_draft_base(row),
+        })
+    return views
+
+
+def _draft_base(row) -> dict:
+    return {
+        "id": row["id"],
+        "supplier": row["supplier_name"],
+        "gstin": row["supplier_gstin"] or "",
+        "phone": _mask_phone(row["contact_phone"]),
+        "run": row["reconciliation_run_id"],
+        "batch": row["gstr2b_import_id"],
+        "status": row["status"],
+        "channel": "available" if row["channel_available"] else "unavailable",
+        "invoices": row["invoice_count"],
+        "taxable": _rupees(row["total_taxable_value_paise"]),
+        "gst": _rupees(row["total_gst_paise"]),
+        "reasons": _json_list(row["review_reasons"]),
+        "created": row["created_at"],
+        "updated": row["updated_at"],
+        "approved_at": row["approved_at"],
+    }
 
 
 def _deliveries() -> list[dict]:
@@ -524,13 +600,120 @@ def _qr_payload() -> dict:
     }
 
 
+def _organization() -> dict:
+    """Stored organisation details; unset values stay empty, never invented."""
+    values = {field: db.get_system_meta(f"org_{field}", "") or "" for field in ORG_FIELDS}
+    values["configured"] = bool(values["company_name"])
+    return values
+
+
+def _validate_organization(payload: dict) -> tuple[dict, dict]:
+    values: dict[str, str] = {}
+    problems: dict[str, str] = {}
+    for field in ORG_FIELDS:
+        if field not in payload:
+            continue
+        raw = payload[field]
+        if raw is None:
+            raw = ""
+        if not isinstance(raw, str):
+            problems[field] = "Must be text."
+            continue
+        values[field] = raw.strip()
+    name = values.get("company_name", "")
+    if "company_name" in values and not name:
+        problems["company_name"] = "Company name is required."
+    elif len(name) > 120:
+        problems["company_name"] = "Company name must be 120 characters or fewer."
+    gstin = values.get("gstin", "")
+    if gstin:
+        check = validation.validate_gstin(gstin)
+        if check.errors:
+            problems["gstin"] = check.errors[0].message
+        else:
+            values["gstin"] = check.normalized or gstin.upper()
+    email = values.get("email", "")
+    if email and (len(email) > 254 or not _EMAIL_RE.match(email)):
+        problems["email"] = "Enter a valid email address."
+    phone = values.get("phone", "")
+    if phone:
+        digits = re.sub(r"\D", "", phone)
+        if not re.fullmatch(r"[+\d][\d\s()-]*", phone) or not 7 <= len(digits) <= 15:
+            problems["phone"] = "Enter a phone number with 7 to 15 digits."
+    return values, problems
+
+
+def _allowed_hosts() -> set[str]:
+    configured = os.environ.get("MILAAN_ALLOWED_HOSTS", "")
+    hosts = {h.strip().lower() for h in configured.split(",") if h.strip()}
+    return hosts | set(DEFAULT_ALLOWED_HOSTS)
+
+
+def _host_allowed(host: str) -> bool:
+    """Exact host names, or ``.suffix`` entries matching any subdomain."""
+    name = _host_name(host)
+    for allowed in _allowed_hosts():
+        if allowed.startswith("."):
+            if name.endswith(allowed) and len(name) > len(allowed):
+                return True
+        elif name == allowed:
+            return True
+    return False
+
+
+def _host_name(host: str) -> str:
+    host = (host or "").strip().lower()
+    if host.startswith("["):
+        return host[: host.find("]") + 1] if "]" in host else host
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
 # --- application ----------------------------------------------------------
 
 def create_app() -> Flask:
+    policy = security.load_security_config()
+    if policy.auth_required and not policy.basic_auth_configured:
+        raise RuntimeError(
+            "Authentication is required (APP_ENV=production or "
+            "MILAAN_AUTH_REQUIRED=true) but MILAAN_BASIC_AUTH_USER and "
+            "MILAAN_BASIC_AUTH_PASSWORD_HASH are not set. Refusing to start "
+            "without authentication."
+        )
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     app.config["JSON_SORT_KEYS"] = False
     db.init_db()
+
+    @app.before_request
+    def _protect_request():
+        # DNS-rebinding guard: only answer for known host names.
+        if not _host_allowed(request.host):
+            return _error("Unknown host.", 400)
+        # Cross-site request guard for every state-changing request. Browsers
+        # send Origin/Sec-Fetch-Site; a write from another site is refused.
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            fetch_site = (request.headers.get("Sec-Fetch-Site") or "").lower()
+            if fetch_site in ("cross-site", "same-site"):
+                return _error("Cross-site requests are not allowed.", 403)
+            origin = request.headers.get("Origin")
+            if origin and origin != "null":
+                if urlsplit(origin).netloc.lower() != request.host.lower():
+                    return _error("Cross-site requests are not allowed.", 403)
+            elif origin == "null":
+                return _error("Cross-site requests are not allowed.", 403)
+        if policy.basic_auth_configured and request.path != "/health":
+            auth = request.authorization
+            user_ok = bool(auth and auth.type == "basic" and auth.username) and hmac.compare_digest(
+                (auth.username or "").encode(), policy.basic_auth_user.encode()
+            )
+            password_ok = bool(auth and auth.password) and check_password_hash(
+                policy.basic_auth_password_hash, auth.password or ""
+            )
+            if not (user_ok and password_ok):
+                response = Response("Authentication required.", 401)
+                response.headers["WWW-Authenticate"] = 'Basic realm="MILAAN", charset="UTF-8"'
+                return response
+        return None
 
     @app.after_request
     def _headers(response):
@@ -538,6 +721,8 @@ def create_app() -> Flask:
             response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
         return response
 
     @app.errorhandler(413)
@@ -1104,16 +1289,20 @@ def create_app() -> Flask:
             columns = [
                 ("invoice_id", "Invoice ID"), ("number", "Invoice"),
                 ("supplier", "Supplier"), ("gstin", "GSTIN"),
-                ("period", "Tax period"), ("invoice_gst", "Invoice GST"),
-                ("twob_number", "2B invoice"), ("twob_gst", "2B GST"),
-                ("difference", "Difference"), ("status", "Status"),
+                ("period", "Tax period"), ("invoice_taxable", "Invoice taxable"),
+                ("invoice_gst", "Invoice GST"), ("twob_number", "2B invoice"),
+                ("twob_taxable", "2B taxable"), ("twob_gst", "2B GST"),
+                ("taxable_difference", "Taxable difference"),
+                ("difference", "GST difference"), ("status", "Status"),
                 ("method", "Method"),
             ]
         elif kind == "followups":
             rows = _draft_rows()
             columns = [
                 ("id", "Draft"), ("supplier", "Supplier"), ("gstin", "GSTIN"),
-                ("phone", "WhatsApp"), ("status", "Status"),
+                ("phone", "WhatsApp"), ("status", "Draft status"),
+                ("workflow_status", "Follow-up status"),
+                ("recovery_status", "Recovery evidence"),
                 ("invoices", "Bills"), ("taxable", "Taxable"), ("gst", "GST"),
                 ("created", "Created"),
             ]
@@ -1147,38 +1336,64 @@ def create_app() -> Flask:
 
     @app.post("/api/data/clear")
     def clear_data():
-        payload = request.get_json(silent=True) or {}
-        if not payload.get("confirm"):
-            return _error("Explicit confirmation is required to clear all data.", 400)
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or payload.get("confirm") is not True:
+            return _error(
+                "Explicit confirmation is required to clear all data. Nothing was deleted.",
+                400,
+            )
+        try:
+            backup = db.backup_database(label="pre-clear")
+        except Exception as exc:
+            return _error(
+                f"Could not create a safety backup ({type(exc).__name__}); nothing was deleted.",
+                500,
+            )
+        counts = {
+            "invoices": len(_invoices()),
+            "gstr2b_batches": len(db.get_gstr2b_imports(1_000_000)),
+        }
         try:
             db.clear_all_data()
-            return jsonify({"ok": True, "message": "All data cleared successfully."})
         except Exception as exc:
-            return _error(f"Failed to clear data: {exc}", 500)
+            return _error(
+                f"Clearing data failed ({type(exc).__name__}). A backup was saved at {backup}.",
+                500,
+            )
+        db.record_system_audit_event(
+            actor="ui",
+            event_type="data_cleared",
+            subject_type="workspace",
+            subject_id="all",
+            details={**counts, "backup": backup.name},
+        )
+        return jsonify({
+            "ok": True,
+            "message": "All data cleared. A backup was saved first.",
+            "backup": str(backup),
+        })
 
     @app.route("/api/settings/organization", methods=["GET", "POST"])
     def organization_settings():
         if request.method == "POST":
-            payload = request.get_json(silent=True) or {}
-            for field in ("company_name", "gstin", "email", "phone"):
-                if field in payload:
-                    db.set_system_meta(f"org_{field}", str(payload[field]).strip())
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict):
+                return _error("Send the organization details as a JSON object.")
+            values, problems = _validate_organization(payload)
+            if problems:
+                return _error(
+                    "Please correct the highlighted organization details. Nothing was saved.",
+                    400,
+                    fields=problems,
+                )
+            for field, value in values.items():
+                db.set_system_meta(f"org_{field}", value)
             return jsonify({
                 "ok": True,
-                "message": "Organization details saved successfully.",
-                "organization": {
-                    "company_name": db.get_system_meta("org_company_name", "Demo Business Pvt Ltd"),
-                    "gstin": db.get_system_meta("org_gstin", "29ABCDE1234F1Z5"),
-                    "email": db.get_system_meta("org_email", "demo@business.com"),
-                    "phone": db.get_system_meta("org_phone", "+91 98765 43210"),
-                }
+                "message": "Organization details saved.",
+                "organization": _organization(),
             })
-        return jsonify({
-            "company_name": db.get_system_meta("org_company_name", "Demo Business Pvt Ltd"),
-            "gstin": db.get_system_meta("org_gstin", "29ABCDE1234F1Z5"),
-            "email": db.get_system_meta("org_email", "demo@business.com"),
-            "phone": db.get_system_meta("org_phone", "+91 98765 43210"),
-        })
+        return jsonify(_organization())
 
     return app
 

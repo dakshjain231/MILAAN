@@ -13,24 +13,29 @@ repository and the WhatsApp agent implementation.
 
 Open **http://127.0.0.1:8501** after starting the launcher. MILAAN's primary
 UI is the custom Flask + HTML workspace in `milaan_web.py` and
-`agent/web/primary.html`. It contains:
+`agent/web/primary.html`. The sidebar has exactly six destinations:
 
-- Dashboard
-- Purchase invoices / bills (upload, validate, edit, import, export)
-- GSTR-2B import (preview, import, duplicate-file guard)
-- Reconciliation (run any batch, inspect every mismatch reason, reopen older runs, export CSV or an accountant-ready XLSX workbook)
-- Exceptions (invoice-level evidence for every non-match, with field comparison)
-- Suppliers (masked master data and bill/GST totals)
-- Supplier follow-ups (read-only eligibility preview, generate, edit, approve, skip, verify later-statement recovery evidence)
-- Delivery (mock/live safeguards, retry, resolve, history)
-- Conversations (read-only agent message history)
-- Agent trace (read-only tool calls, decisions, consent, messages)
-- Audit log
-- Settings (service health, database paths and demo status, WhatsApp QR/status, guarded test send)
+1. **Dashboard** — eligible/ineligible ITC, latest reconciliation counts,
+   monthly trend, vendor ITC and workflow progress, all derived from your
+   records and filterable by period, GSTIN, supplier and status.
+2. **Purchase Invoices** — CSV/XLSX upload with preview, validation status,
+   filters and per-invoice details.
+3. **GSTR-2B Import** — GST-portal JSON, portal Excel (.xlsx) or the CSV/XLSX
+   template; preview, duplicate-file guard, per-row Imported/Rejected status.
+4. **Reconciliation** — run against the latest GSTR-2B import, filter, and
+   inspect stored values and reasons for every result (including rows that
+   are only in GSTR-2B); export CSV or the accountant XLSX workbook.
+5. **Supplier Follow-ups** — prepare drafts, edit, approve (explicit
+   confirmation), skip, simulated or Cloud API send (guarded), and
+   later-statement verification. "Resolved" requires later GSTR-2B evidence.
+6. **Settings** (bottom of the sidebar) — organization details, uploads,
+   WhatsApp status/QR/test send, and the protected clear-data action.
+
+The header's **Sample View** toggle shows the reference sample data used for
+screenshots; it is labelled "Sample Data" and never mixes with your records.
 
 There is no second dashboard or alternate web entry point. `milaan_web.py`
-serves every page listed above, and `agent/web/primary.html` is the only
-frontend. The optional inbox webhook server and WhatsApp bridge are background
+serves every page, and `agent/web/primary.html` is the only frontend. The optional inbox webhook server and WhatsApp bridge are background
 services; they do not serve a competing user interface.
 
 ## Quick start (macOS)
@@ -94,6 +99,33 @@ Useful options:
 
 Advanced/CI: set `MILAAN_PYTHON=/path/to/prepared/venv/bin/python` to use
 an existing interpreter instead of `./.venv`.
+
+### Background launcher for presentations
+
+`./run_milaan.sh` stays in the foreground. For a demo where no Terminal
+window needs to stay open, use the background launcher instead:
+
+```bash
+./start_milaan_demo.sh     # starts the UI (and the WhatsApp Web bridge when enabled) detached
+./status_milaan_demo.sh    # health of every component, ports and log paths
+./stop_milaan_demo.sh      # stops only the processes this launcher started
+```
+
+Processes run in their own sessions (they survive closing the Terminal), PID
+and start-time records live in `.run/demo/`, and logs in `logs/demo/`
+(rotated at 10 MB). Starting twice never creates duplicates, and stop never
+signals a process whose PID was reused by another program. Nothing is sent to
+WhatsApp at startup.
+
+## Supported file formats
+
+| Upload | Accepted | Notes |
+| --- | --- | --- |
+| Purchase invoices | CSV, XLSX | Must follow the downloadable template (`/api/invoices/template.csv`). Required: supplier_name, supplier_gstin, invoice_number, invoice_date, tax_period, taxable_value, gst_rate, cgst, sgst, igst, total_gst, invoice_total. Invalid rows are rejected and never imported. |
+| GSTR-2B | GST-portal JSON (`data.docdata.b2b`), portal Excel (.xlsx), template CSV/XLSX | Amounts are exact (integer paise); ITC availability, reverse charge and cess are kept. PDF and legacy .xls are not supported. |
+
+Uploads are limited to 25 MB. `demo/demo_purchase_invoices.csv` and
+`demo/demo_gstr2b_portal.json` are a matching synthetic pair for walkthroughs.
 
 
 ## Services and ports
@@ -186,11 +218,17 @@ The UI reads the agent database through a read-only adapter
 incompatible schema. If the agent database is missing or
 empty, the agent pages say so instead of showing synthetic values.
 
-Back up the operational database with:
+Back up the operational database (a consistent, integrity-checked copy that
+is safe while MILAAN runs) with:
 
 ```bash
-.venv/bin/python scripts/backup_database.py
+mkdir -p backups && .venv/bin/python scripts/backup_database.py backups
 ```
+
+**Clear All Data** in Settings requires an explicit confirmation, writes a
+backup to `backups/` before deleting anything, and keeps the audit log and
+organization settings. Schema migrations that rebuild a table also write a
+backup first.
 
 Back up the agent database with the built-in SQLite backup API used by
 `scripts/cleanup_placeholder_seed.py`, or copy it while the agent is stopped.
@@ -250,17 +288,20 @@ process owns the port, stop it or use `./run_milaan.sh --port 8502`.
 `cd whatsapp_service && npm ci`. Verify `MILAAN_WA_SERVICE_TOKEN` is the same
 for both processes (it is never printed).
 
-**The QR is not visible.** Open **Settings → Show WhatsApp QR**. If the
-existing linked session is valid, no QR is needed. Settings shows whether the
-service is ready, waiting for a scan, or misconfigured.
+**The QR is not visible.** Open **Settings → WhatsApp → Link device** (shown
+only while the bridge waits for a scan). If the existing linked session is
+valid, no QR is needed. Settings shows whether the bridge is linked, waiting
+for a scan, off, or not running, and whether Cloud API delivery is configured.
 
 **The agent pages are empty.** That is expected after the placeholder cleanup.
 Seed a temporary database or message the agent when the inbound channel is
 configured. Do not seed the real agent database with placeholders.
 
-**A delivery is stuck or ambiguous.** Open **Audit log → Delivery evidence**.
+**A delivery is stuck or ambiguous.** Open the follow-up from **Supplier
+Follow-ups**; its Deliveries and History sections show the stored evidence.
 Unknown outcomes are preserved explicitly and can be resolved only with
-verified provider evidence; the app never guesses.
+verified provider evidence (`/api/deliveries/<id>/resolve`); the app never
+guesses.
 
 **I need a fresh environment.** Keep `.env`, databases, and the WhatsApp auth
 folder; recreate `.venv` and `whatsapp_service/node_modules`, then rerun the
@@ -275,8 +316,8 @@ launcher.
 - Live OCR/LLM extraction was not tested (no LLM key configured); offline
   fixtures and deterministic extraction tests pass.
 - The only web interface is `agent/web/primary.html`, served by
-  `milaan_web.py`. Agent history is read-only and is shown in its Conversation
-  and Agent trace pages.
+  `milaan_web.py`. The read-only agent history adapter (`agent_views.py`)
+  feeds `/api/state`; there is no separate agent page in the six-page UI.
 - Reconciliation is deterministic and auditable; it does not query the live
   GST portal or verify registration status.
 - The system does not run a background retry scheduler. Retries are explicit
@@ -284,6 +325,36 @@ launcher.
 - The ZIP intentionally excludes `.env`, databases, WhatsApp auth/session
   state, `node_modules`, `.venv`, caches, and logs. Reconnect your local
   configuration after extraction.
+
+## Production deployment
+
+The local launchers run Flask's development server on `127.0.0.1` for a
+single user. **Do not expose that server to a network.** For a shared or
+public deployment:
+
+1. Build the image (`Dockerfile`) or install `requirements-prod.txt`; it runs
+   `gunicorn wsgi:app` (`wsgi.py` is the production entry point).
+2. Set `APP_ENV=production`. The app then **refuses to start** unless
+   `MILAAN_BASIC_AUTH_USER` and `MILAAN_BASIC_AUTH_PASSWORD_HASH` are set.
+   Create the hash with
+   `python -c "from werkzeug.security import generate_password_hash as g; print(g(input('Password: ')))"`.
+3. Terminate HTTPS at a reverse proxy in front of gunicorn (Basic auth is only
+   safe over TLS) and set `MILAAN_ALLOWED_HOSTS` to the public host name
+   (a leading dot allows subdomains). Requests for other Host headers get 400.
+4. Put `DATABASE_PATH`/`AGENT_DB_PATH` on persistent storage and schedule
+   `scripts/backup_database.py`; SQLite suits a single small team, not
+   concurrent multi-tenant use.
+
+Built-in protections: Host allowlist (DNS rebinding), cross-site write
+refusal (Origin / Sec-Fetch-Site), `X-Frame-Options: DENY`, 25 MB upload
+limit, parameterised SQL, formula-safe CSV export, masked phone numbers and no
+secrets in API responses or logs.
+
+Still required before **public** production (not done here): a real hosting
+target with HTTPS and DNS, an identity provider or managed credentials
+rotation (Basic auth is a single shared login), monitoring/alerting, off-site
+backups with restore drills, and WhatsApp Cloud API credentials plus a public
+HTTPS webhook URL if live delivery and delivery receipts are wanted.
 
 ## Further documentation
 

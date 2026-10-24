@@ -48,7 +48,7 @@ Never use the `whatsapp-web.js` route from the other repo: it is unofficial and 
 
 **Plan B, offline.** Always ready, needs nothing from the network.
 * `python -m agent.simulate --script demo --offline`
-* Agent view: set `AGENT_DB_PATH=agent_data/simulator.db`, run `./run_milaan.sh --with-agent`, then open http://127.0.0.1:8501 → Conversation / Agent trace
+* Agent view: set `AGENT_DB_PATH=agent_data/simulator.db`, run `./run_milaan.sh --with-agent`, then read the `agent` section of http://127.0.0.1:8501/api/state
 * Say it plainly: in offline mode the bills are read by a fixture reader, not by the vision model.
 
 **Gemini quota.** The free tier allows 20 requests per model per day. The number of calls in one full live run has not been measured yet: count them in the rehearsal, or enable billing.

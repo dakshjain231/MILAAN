@@ -290,65 +290,13 @@ def _read_json(content: bytes) -> tuple[list[str], list[list[Any]]]:
     if not data:
         raise ValueError("file is empty")
 
-    b2b_list = None
+    # GST-portal GSTR-2B JSON (b2b nesting) is parsed by gstr2b_portal before
+    # this reader is reached; here only flat record arrays are accepted.
     if isinstance(data, dict):
-        if "data" in data and isinstance(data["data"], dict) and "b2b" in data["data"]:
-            b2b_list = data["data"]["b2b"]
-        elif "b2b" in data and isinstance(data["b2b"], list):
-            b2b_list = data["b2b"]
-        elif "rows" in data and isinstance(data["rows"], list):
+        if isinstance(data.get("rows"), list):
             data = data["rows"]
-        elif "invoices" in data and isinstance(data["invoices"], list):
+        elif isinstance(data.get("invoices"), list):
             data = data["invoices"]
-
-    if b2b_list is not None:
-        canonical_headers = [
-            "supplier_gstin", "invoice_number", "invoice_date", "tax_period",
-            "taxable_value", "cgst", "sgst", "igst", "total_gst"
-        ]
-        rows = []
-        for supplier in b2b_list:
-            ctin = str(supplier.get("ctin") or supplier.get("supplier_gstin") or "")
-            for inv in supplier.get("inv", []):
-                inum = str(inv.get("inum") or inv.get("invoice_number") or "")
-                idt = str(inv.get("idt") or inv.get("invoice_date") or "")
-                if re.match(r"^\d{2}-\d{2}-\d{4}$", idt):
-                    d, m, y = idt.split("-")
-                    idt = f"{y}-{m}-{d}"
-                elif re.match(r"^\d{2}/\d{2}/\d{4}$", idt):
-                    d, m, y = idt.split("/")
-                    idt = f"{y}-{m}-{d}"
-
-                period = str(inv.get("tax_period") or inv.get("period") or "")
-                if not period and len(idt) >= 7:
-                    period = idt[:7]
-
-                txval = 0.0
-                camt = 0.0
-                samt = 0.0
-                iamt = 0.0
-                items = inv.get("items", [])
-                if items:
-                    for itm in items:
-                        det = itm.get("itm_det", itm)
-                        txval += float(det.get("txval", 0.0))
-                        camt += float(det.get("camt", 0.0))
-                        samt += float(det.get("samt", 0.0))
-                        iamt += float(det.get("iamt", 0.0))
-                else:
-                    txval = float(inv.get("val", 0.0))
-                    camt = float(inv.get("camt", 0.0))
-                    samt = float(inv.get("samt", 0.0))
-                    iamt = float(inv.get("iamt", 0.0))
-
-                tot_gst = camt + samt + iamt
-                rows.append([
-                    ctin, inum, idt, period,
-                    f"{txval:.2f}", f"{camt:.2f}", f"{samt:.2f}", f"{iamt:.2f}", f"{tot_gst:.2f}"
-                ])
-        if not rows:
-            raise ValueError("file contains a header but no data rows")
-        return canonical_headers, rows
 
     if isinstance(data, list):
         if not data:
@@ -611,7 +559,7 @@ def _parse_row(
 
 
 def parse_gstr2b(content: bytes, file_name: str) -> ParsedGstr2b:
-    """Parse a canonical GSTR-2B CSV/XLSX file or a portal B2B workbook.
+    """Parse a canonical GSTR-2B CSV/XLSX file or a portal B2B workbook/JSON.
 
     Raises ValueError for fatal file-level problems (unreadable file,
     missing/duplicate required headers, no data rows). Row-level problems
@@ -622,6 +570,12 @@ def parse_gstr2b(content: bytes, file_name: str) -> ParsedGstr2b:
         from gstr2b_portal import try_parse_portal_workbook
 
         portal = try_parse_portal_workbook(content, file_name)
+        if portal is not None:
+            return portal
+    if extension == ".json":
+        from gstr2b_portal import try_parse_portal_json
+
+        portal = try_parse_portal_json(content, file_name)
         if portal is not None:
             return portal
     headers, data_rows, source_format = read_tabular_file(content, file_name)

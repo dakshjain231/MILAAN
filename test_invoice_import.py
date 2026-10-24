@@ -108,7 +108,7 @@ class InvoiceImportParseTests(unittest.TestCase):
         self.assertEqual(parsed.accepted_rows, 1)
 
     def test_unsupported_extension_raises(self):
-        with self.assertRaisesRegex(ValueError, "unsupported file type"):
+        with self.assertRaisesRegex(ValueError, "must be a CSV or XLSX file"):
             invoice_import.parse_invoice_file(b"data", "invoices.txt")
 
     def test_blank_file_raises(self):

@@ -73,11 +73,12 @@ class PrimaryUITestCase(unittest.TestCase):
         self.assertEqual(self.client.get("/_stcore/health").status_code, 404)
 
     def test_organization_settings_and_clear_data(self):
-        # Test default settings
+        # Unset settings are empty; no placeholder organisation is invented.
         res = self.client.get("/api/settings/organization")
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
-        self.assertEqual(data["company_name"], "Demo Business Pvt Ltd")
+        self.assertEqual(data["company_name"], "")
+        self.assertFalse(data["configured"])
 
         # Test updating settings
         update_res = self.client.post(

@@ -82,9 +82,11 @@ Save.
 * Then run the seed again so the demo starts clean (stop the server first; see "Reset" below).
 
 ## 7. Trace viewer for the projector
-Start the single MILAAN application with `./run_milaan.sh --with-agent`, open
-http://127.0.0.1:8501, and use the **Conversation** and **Agent trace** pages.
-Refresh those pages after each demo step. Do not start a separate dashboard.
+Start the single MILAAN application with `./run_milaan.sh --with-agent`.
+The six-page MILAAN UI has no conversation or trace page; the agent's
+read-only activity summary is in the `agent` section of
+http://127.0.0.1:8501/api/state, and every tool call and message is stored in
+the agent database (`AGENT_DB_PATH`). Do not start a separate dashboard.
 
 ## 8. Demo run (about 3 minutes)
 Work from WhatsApp Web, in the chat with +1 415 523 8886. Files are in `MILAAN-master\agent_data\demo\`.
@@ -100,7 +102,7 @@ Work from WhatsApp Web, in the chat with +1 415 523 8886. Files are in `MILAAN-m
 | 7 | Phone B types `bhai agle hafte tak dono bill daal dunga` | You get the relay with a resolved date |
 | 8 | Hold the mic in WhatsApp Web and say "कितना पैसा अटका है?" | 🎙️ transcript, then the status in rupees |
 | 9 | Attach (Document) `GSTR2B_NOV2026.json` | 🎉 RECOVERED ₹16,362 |
-| 10 | Open MILAAN → Agent trace | Every tool call, decision, consent and message |
+| 10 | Open http://127.0.0.1:8501/api/state (`agent` section) | Recorded agent activity summary |
 
 ## Reset between runs
 Press Ctrl+C on the server, run the seed command again, then start the server again. Do not run the seed while the server is running.

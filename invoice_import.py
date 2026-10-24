@@ -209,10 +209,32 @@ def _build_column_index(headers: list[str]) -> tuple[dict[str, int], list[str]]:
         index[name] = position
     missing = [name for name in REQUIRED_COLUMNS if name not in index]
     if missing:
-        raise ValueError(
-            "missing required column(s): " + ", ".join(missing)
-        )
+        raise ValueError(_missing_columns_message(missing, index))
     return index, sorted(set(detected))
+
+
+# Columns a GSTR-2B statement has but a purchase register does not need.
+_PURCHASE_ONLY_COLUMNS = {"supplier_name", "gst_rate", "invoice_total"}
+
+
+def _missing_columns_message(missing: list[str], present: dict[str, int]) -> str:
+    """One actionable message; the required columns are never inferred."""
+    message = "missing required column(s): " + ", ".join(missing) + "."
+    looks_like_gstr2b = (
+        _PURCHASE_ONLY_COLUMNS.issubset(missing)
+        and {"supplier_gstin", "invoice_number", "total_gst"}.issubset(present)
+    )
+    if looks_like_gstr2b:
+        message += (
+            " This file has the GSTR-2B column layout; upload GSTR-2B "
+            "statements on the GSTR-2B Import page."
+        )
+    message += (
+        " A purchase-invoice file needs: " + ", ".join(REQUIRED_COLUMNS)
+        + ". Download the invoice template from the upload dialog. "
+        "Nothing was imported."
+    )
+    return message
 
 
 def _parse_row(
@@ -382,6 +404,12 @@ def parse_invoice_file(content: bytes, file_name: str) -> ParsedInvoiceImport:
     Raises ValueError only for file-level problems. Row-level problems are
     returned on the parsed rows so the UI can preview them before import.
     """
+    extension = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    if extension not in ("csv", "xlsx"):
+        raise ValueError(
+            "Purchase invoices must be a CSV or XLSX file that follows the "
+            "invoice template. Nothing was imported."
+        )
     headers, data_rows, source_format = gstr2b.read_tabular_file(
         content, file_name
     )

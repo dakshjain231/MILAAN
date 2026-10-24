@@ -317,6 +317,9 @@ main{min-width:0}
 }
 
 /* Alert Banner */
+.alert-banner.ok{background:#f0fdf4;border-color:#bbf7d0}
+.alert-banner.ok .alert-icon{background:#dcfce7;color:#16a34a}
+.alert-banner.ok .alert-btn{background:#16a34a}
 .alert-banner{
   background:#f5f3ff;
   border:1px solid #ddd6fe;
@@ -375,20 +378,28 @@ main{min-width:0}
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:var(--radius-lg);
-  padding:16px 18px;
+  padding:18px 18px;
   box-shadow:var(--shadow-sm);
   transition:all .15s ease;
   position:relative;
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
 }
+.kpi-card .kpi-ic-box{width:44px;height:44px;border-radius:10px;flex:none}
+.kpi-body{min-width:0}
+.kpi-card .kpi-info-btn{position:absolute;top:12px;right:12px}
+.kpi-card.tint-purple{background:#f5f3ff;border-color:#e9e5ff}
+.kpi-card.tint-red{background:#fff5f5;border-color:#fde2e2}
+.kpi-card.tint-green{background:#f2fbf6;border-color:#d9f2e3}
+.kpi-card.tint-amber{background:#fffaf0;border-color:#fdecc8}
+.kpi-card.tint-purple .kpi-label{color:var(--brand)}
+.kpi-card.tint-red .kpi-label{color:#dc2626}
+.kpi-card.tint-green .kpi-label{color:#059669}
+.kpi-card.tint-amber .kpi-label{color:#d97706}
 .kpi-card:hover{
   border-color:#cbd5e1;
   box-shadow:var(--shadow);
-}
-.kpi-top{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin-bottom:12px;
 }
 .kpi-ic-box{
   width:34px;
@@ -433,8 +444,8 @@ main{min-width:0}
 /* Filter Row */
 .filter-row{
   display:flex;
-  align-items:center;
-  gap:12px;
+  align-items:flex-end;
+  gap:14px;
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:var(--radius-lg);
@@ -445,15 +456,17 @@ main{min-width:0}
 }
 .filter-field{
   display:flex;
-  align-items:center;
-  gap:8px;
+  flex-direction:column;
+  align-items:stretch;
+  gap:6px;
 }
 .filter-field label{
-  font-size:12px;
+  font-size:12.5px;
   font-weight:500;
-  color:var(--muted);
+  color:var(--ink-secondary);
   white-space:nowrap;
 }
+.filter-field select{min-width:150px;padding-top:8px;padding-bottom:8px}
 .filter-field select, .filter-select{
   border:1px solid var(--line);
   background:#fff;
@@ -476,7 +489,7 @@ main{min-width:0}
 .filter-search{
   margin-left:auto;
   position:relative;
-  min-width:260px;
+  min-width:240px;
 }
 .filter-search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8}
 .filter-search input{
@@ -509,6 +522,8 @@ main{min-width:0}
   color:#fff;
 }
 .btn-primary:hover{background:var(--brand-hover)}
+.btn:disabled,.btn:disabled:hover{opacity:.5;cursor:not-allowed}
+.btn-primary:disabled:hover{background:var(--brand)}
 .btn-secondary{
   background:#fff;
   border-color:var(--line);
@@ -573,6 +588,9 @@ table.data-table tr:hover td{
 table.data-table th.right, table.data-table td.right{text-align:right}
 table.data-table th.center, table.data-table td.center{text-align:center}
 
+table.multi-tier td{white-space:nowrap;padding:12px 10px;font-size:12.5px}
+table.multi-tier th{padding-left:10px;padding-right:10px}
+table.multi-tier td.wrap{white-space:normal;min-width:140px}
 table.multi-tier thead tr:first-child th{
   background:#f8fafc;
   border-bottom:1px solid var(--line);
@@ -652,6 +670,43 @@ table.multi-tier thead tr:nth-child(2) th{
   background:var(--brand-soft);
   color:var(--brand);
 }
+.badge-skipped{
+  background:var(--line-light);
+  color:var(--muted);
+}
+
+.batch-summary{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px 16px;
+  font-size:12.5px;
+  color:var(--ink-secondary);
+  padding:12px 18px;
+  border-bottom:1px solid var(--line-light);
+}
+.batch-summary b{color:var(--ink)}
+.field-error{color:var(--red-text);font-size:12px;margin-top:4px}
+.check-line{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink-secondary);margin:8px 0}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:10px;align-items:center}
+.modal-section{border-top:1px solid var(--line-light);margin-top:14px;padding-top:12px;font-size:13px}
+.muted-note{color:var(--muted);font-size:12px;margin:4px 0 6px}
+.plain-list{margin:6px 0 0 16px;padding:0;font-size:12px;color:var(--ink-secondary)}
+#tax-period-select{border:0;background:transparent;font:inherit;font-weight:700;font-size:14px;color:var(--ink);padding:0;cursor:pointer;appearance:none;outline:none}
+.period-picker{cursor:pointer}
+.form-input.invalid{border-color:#f87171}
+
+/* Inline upload validation notice */
+.upload-notice{
+  border-radius:8px;
+  padding:10px 12px;
+  font-size:12.5px;
+  line-height:1.5;
+}
+.upload-notice.bad{background:var(--red-bg);color:var(--red-text)}
+.upload-notice.ok{background:var(--green-bg);color:var(--green-text)}
+.upload-notice.warn{background:var(--amber-bg);color:var(--amber-text)}
+.upload-notice ul{margin:6px 0 0 18px;padding:0}
 
 /* Dropzone */
 .upload-card{
@@ -699,17 +754,30 @@ table.multi-tier thead tr:nth-child(2) th{
 /* Dashboard Grid */
 .dashboard-grid{
   display:grid;
-  grid-template-columns:1fr 340px;
-  gap:20px;
+  grid-template-columns:1fr 250px;
+  gap:16px;
+  align-items:start;
+}
+.dashboard-grid .filter-row{margin-bottom:0}
+.dashboard-grid .dash-left{gap:16px}
+.dashboard-grid .filter-field select{min-width:0;width:100%}
+.dashboard-grid .filter-field{flex:1}
+.dash-main{
+  display:grid;
+  grid-template-columns:1.15fr 1fr;
+  gap:16px;
+}
+.dash-stack{display:flex;flex-direction:column;gap:16px}
+.chart-empty{
+  display:grid;
+  place-items:center;
+  height:100%;
+  color:var(--muted);
+  font-size:12.5px;
 }
 .dash-left{
   display:flex;
   flex-direction:column;
-  gap:20px;
-}
-.dash-sub-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
   gap:20px;
 }
 .card{
@@ -988,19 +1056,20 @@ table.multi-tier thead tr:nth-child(2) th{
             Sample View
           </button>
         </div>
-        <div class="period-picker">
+        <label class="period-picker" title="Filter every page by tax period">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <div class="period-text">
             <span>Tax period</span>
-            <b id="tax-period-label">July 2026</b>
+            <select id="tax-period-select" onchange="setGlobalPeriod(this.value)" aria-label="Tax period">
+              <option value="">All periods</option>
+            </select>
           </div>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-        </div>
-        <button class="icon-btn-round" title="Notifications" aria-label="Notifications">
+        </label>
+        <button class="icon-btn-round" id="notif-btn" title="Notifications" aria-label="Notifications" onclick="openAttention()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span class="notif-dot"></span>
+          <span class="notif-dot hide" id="notif-dot"></span>
         </button>
-        <div class="user-profile">
+        <div class="user-profile" onclick="setView('settings')" title="Settings" style="cursor:pointer">
           <div class="user-avatar" id="avatar-letter">D</div>
           <span class="user-name" id="user-display-name">Daksh Jain</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
@@ -1020,7 +1089,7 @@ table.multi-tier thead tr:nth-child(2) th{
     <div class="modal-head">
       <div>
         <h2 id="modal-upload-title">Upload Invoices</h2>
-        <p>CSV or XLSX supported (up to 25 MB)</p>
+        <p>CSV or XLSX supported (up to 25 MB)<span id="modal-template-link"> · <a href="/api/invoices/template.csv">Download invoice template</a></span></p>
       </div>
       <button class="modal-close" onclick="closeModal()">×</button>
     </div>
@@ -1055,7 +1124,7 @@ table.multi-tier thead tr:nth-child(2) th{
       <button class="modal-close" onclick="closeConfirmModal()">×</button>
     </div>
     <p style="color:var(--ink-secondary);line-height:1.5;margin-bottom:20px">
-      Are you sure you want to clear all data? This will permanently delete all uploaded purchase invoices, GSTR-2B imports, reconciliation runs, and follow-up drafts.
+      This deletes every purchase invoice, supplier, GSTR-2B import, reconciliation run, follow-up draft, verification and WhatsApp delivery record from the workspace. A backup copy of the database is saved first, and the audit log and organization settings are kept.
     </p>
     <div style="display:flex;justify-content:flex-end;gap:10px">
       <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
@@ -1086,7 +1155,9 @@ const S = {
   data: null,
   search: "",
   demoMode: false,
-  org: {company_name: "Demo Business Pvt Ltd", gstin: "29ABCDE1234F1Z5", email: "demo@business.com", phone: "+91 98765 43210"},
+  org: {company_name: "", gstin: "", email: "", phone: "", configured: false},
+  dashMetric: "eligible",
+  period: "",
   uploadKind: "invoices",
   selectedFile: null,
   activeDraft: null,
@@ -1095,7 +1166,11 @@ const S = {
     gstr2b: 1,
     reconciliation: 1,
     followups: 1
-  }
+  },
+  // Applied filters drive the table; draft values change only on "Apply filters".
+  filters: {dashboard: {}, invoices: {}, gstr2b: {}, reconciliation: {}, followups: {}},
+  filterDraft: {dashboard: {}, invoices: {}, gstr2b: {}, reconciliation: {}, followups: {}},
+  reconBusy: false
 };
 
 // Baselines matching reference screenshots exactly
@@ -1148,11 +1223,18 @@ const BASELINE_FOLLOWUPS = [
 ];
 
 function toast(msg, kind="ok") {
-  const el = document.createElement("div");
-  el.className = "toast " + kind;
-  el.textContent = msg;
-  $("#toasts").appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  const wrap = $("#toasts");
+  // Repeating the same message restarts its timer instead of stacking copies.
+  let el = [...wrap.children].find(t => t.textContent === msg && t.classList.contains(kind));
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "toast " + kind;
+    el.textContent = msg;
+    wrap.appendChild(el);
+    while (wrap.children.length > 3) wrap.firstElementChild.remove();
+  }
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.remove(), kind === "bad" ? 6000 : 4000);
 }
 
 async function api(path, options={}) {
@@ -1161,16 +1243,20 @@ async function api(path, options={}) {
   try { body = await res.json(); } catch(e){}
   if (!res.ok) {
     const msg = body && body.error ? body.error : `Request failed (${res.status})`;
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
   return body;
 }
 
 function toggleDataMode() {
   S.demoMode = !S.demoMode;
+  try { sessionStorage.setItem("milaan.sampleView", S.demoMode ? "1" : "0"); } catch (e) {}
   updateModeUI();
   render();
-  toast(S.demoMode ? "Viewing Reference Sample Data" : "Viewing Live Production Data");
+  toast(S.demoMode ? "Sample View: reference sample data, not your records" : "Live Data: your database records");
 }
 
 function updateModeUI() {
@@ -1178,14 +1264,65 @@ function updateModeUI() {
   const text = $("#mode-text");
   const btn = $("#mode-btn");
   if (!badge || !text || !btn) return;
+  const demoDb = !!(S.data && S.data.database && S.data.database.demo);
   if (S.demoMode) {
     badge.className = "mode-badge sample";
     text.textContent = "Sample Data";
     btn.textContent = "Switch to Live";
   } else {
     badge.className = "mode-badge live";
-    text.textContent = "Live Data";
+    text.textContent = demoDb ? "Demo Database" : "Live Data";
     btn.textContent = "Sample View";
+  }
+  updateHeader();
+}
+
+// Header: tax-period options and the attention indicator come from live data.
+function attentionCount() {
+  const latest = S.data && S.data.reconciliation && S.data.reconciliation.latest;
+  if (!latest) return 0;
+  return (latest.amount_mismatch || 0) + (latest.missing || 0) + (latest.review || 0);
+}
+
+function updateHeader() {
+  const select = $("#tax-period-select");
+  if (select) {
+    const rows = [
+      ...((S.data && S.data.invoices) || []),
+      ...((S.data && S.data.gstr2b && S.data.gstr2b.rows) || [])
+    ];
+    const options = uniqueOptions(rows.map(periodOf), periodLabel).reverse();
+    if (S.period && !options.some(o => o.value === S.period)) {
+      options.push({value: S.period, label: periodLabel(S.period)});
+    }
+    select.innerHTML = `<option value="">All periods</option>` +
+      options.map(o => `<option value="${esc(o.value)}" ${o.value === S.period ? "selected" : ""}>${esc(o.label)}</option>`).join("");
+    select.disabled = S.demoMode;
+  }
+  const n = S.demoMode ? 0 : attentionCount();
+  const dot = $("#notif-dot");
+  if (dot) dot.classList.toggle("hide", n === 0);
+  const bell = $("#notif-btn");
+  if (bell) bell.title = n ? `${n} reconciliation item(s) need review` : "No reconciliation items need review";
+}
+
+function setGlobalPeriod(period) {
+  S.period = period;
+  ["dashboard", "invoices", "gstr2b", "reconciliation", "followups"].forEach(page => {
+    S.filters[page] = {...S.filters[page], period};
+    S.filterDraft[page] = {...S.filterDraft[page], period};
+    S.pages[page] = 1;
+  });
+  render();
+}
+
+function openAttention() {
+  if (attentionCount()) {
+    S.filters.reconciliation = {};
+    S.filterDraft.reconciliation = {};
+    setView("reconciliation");
+  } else {
+    toast("No reconciliation items need review.");
   }
 }
 
@@ -1215,6 +1352,7 @@ function setView(page) {
     settings: "Settings"
   };
   document.title = `MILAAN · ${titles[page] || "Workspace"}`;
+  if (page === "settings" && !S.demoMode) loadWhatsAppStatus();
   render();
   window.scrollTo(0,0);
 }
@@ -1228,25 +1366,27 @@ window.addEventListener("hashchange", () => {
 async function loadState() {
   try {
     S.data = await api("/api/state");
-    if (S.data && S.data.database && S.data.database.demo) {
-      S.demoMode = true;
-    }
-    try {
-      const org = await api("/api/settings/organization");
-      if (org && org.company_name) S.org = org;
-    } catch(e) {}
-    updateModeUI();
-    render();
   } catch(e) {
-    console.warn("Could not load backend state:", e);
+    toast(`Could not load data from the MILAAN server: ${e.message}`, "bad");
     render();
+    return;
   }
+  try {
+    S.org = await api("/api/settings/organization");
+  } catch(e) {
+    toast(`Could not load organization settings: ${e.message}`, "bad");
+  }
+  updateModeUI();
+  render();
 }
 
 // Render Router
 function render() {
   const container = $("#main-content");
   if (!container) return;
+  const active = document.activeElement;
+  const focusKey = active && container.contains(active) && active.dataset ? active.dataset.focusKey : null;
+  const caret = focusKey && typeof active.selectionStart === "number" ? active.selectionStart : null;
   switch (S.view) {
     case "dashboard": container.innerHTML = renderDashboard(); break;
     case "invoices": container.innerHTML = renderInvoices(); break;
@@ -1257,114 +1397,143 @@ function render() {
     default: container.innerHTML = renderDashboard();
   }
   attachPageEvents();
+  if (focusKey) {
+    const again = container.querySelector(`[data-focus-key="${focusKey}"]`);
+    if (again) {
+      again.focus();
+      if (caret !== null && again.setSelectionRange) again.setSelectionRange(caret, caret);
+    }
+  }
 }
 
 // ------------------- PAGE 1: DASHBOARD -------------------
+// Live mode derives every number from /api/state (invoices + the latest
+// reconciliation run) after applying the dashboard filters. Sample View uses
+// the reference sample constants and is labelled as such in the header.
+function dashboardModel() {
+  const f = S.filters.dashboard || {};
+  const invsAll = (S.data && S.data.invoices) || [];
+  const resultsAll = ((S.data && S.data.reconciliation && S.data.reconciliation.results) || [])
+    .filter(r => r.status !== "IN_2B_NOT_IN_BOOKS");
+  const statusByInvoice = {};
+  resultsAll.forEach(r => { if (r.invoice_id != null) statusByInvoice[r.invoice_id] = r.status; });
+  const keep = row =>
+    (!f.period || periodOf(row) === f.period) &&
+    (!f.gstin || row.gstin === f.gstin) &&
+    (!f.supplier || row.supplier === f.supplier);
+  const invs = invsAll.filter(i => keep(i) && (!f.status || statusByInvoice[i.id] === f.status));
+  const results = resultsAll.filter(r => keep(r) && (!f.status || r.status === f.status));
+  const sum = (rows, key) => rows.reduce((a, r) => a + (Number(r[key]) || 0), 0);
+  const by = statuses => results.filter(r => statuses.includes(r.status));
+  const valid = invs.filter(i => i.validation === "valid");
+  const notValid = invs.filter(i => i.validation !== "valid");
+  const matched = by(["MATCHED"]);
+  const mismatch = by(["AMOUNT_MISMATCH", "NEEDS_REVIEW", "ITC_UNAVAILABLE"]);
+  const missing = by(["MISSING_FROM_2B"]);
+  return {
+    invsAll, invs, results, resultsAll,
+    eligibleGst: sum(valid, "gst"), eligibleCount: valid.length,
+    ineligibleGst: sum(notValid, "gst"), ineligibleCount: notValid.length,
+    matchedCount: matched.length, matchedGst: sum(matched, "invoice_gst"),
+    mismatchCount: mismatch.length, mismatchGst: sum(mismatch, "invoice_gst"),
+    missingCount: missing.length, missingGst: sum(missing, "invoice_gst"),
+    counts: {
+      total: results.length,
+      matched: matched.length,
+      mismatch: by(["AMOUNT_MISMATCH"]).length,
+      missing: missing.length,
+      ineligible: by(["NOT_ELIGIBLE"]).length,
+      review: by(["NEEDS_REVIEW", "ITC_UNAVAILABLE"]).length
+    },
+    trend: buildLiveMonthlyTrend(invs, S.dashMetric),
+    vendors: buildLiveTopVendors(valid),
+    hasRun: !!(S.data && S.data.reconciliation && S.data.reconciliation.latest)
+  };
+}
+
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 function renderDashboard() {
   const isDemo = S.demoMode;
-  let totalInvoices, eligibleGst, ineligibleGst, matchedCount, matchedGst, mismatchCount, mismatchGst, missingCount, missingGst;
-  let reconStatusCounts, monthlyTrend, topVendors;
-
+  let m;
   if (isDemo) {
-    totalInvoices = 150;
-    eligibleGst = 120500;
-    ineligibleGst = 15000;
-    matchedCount = 120;
-    matchedGst = 98400;
-    mismatchCount = 45;
-    mismatchGst = 16200;
-    missingCount = 30;
-    missingGst = 5900;
-    reconStatusCounts = {
-      total: 195,
-      matched: 120,
-      mismatch: 25,
-      missing: 30,
-      ineligible: 18,
-      review: 2
+    m = {
+      invsAll: BASELINE_INVOICES, invs: BASELINE_INVOICES, results: BASELINE_RECON, hasRun: true,
+      eligibleGst: 120500, eligibleCount: 150, ineligibleGst: 15000, ineligibleCount: 18,
+      matchedCount: 120, matchedGst: 98400, mismatchCount: 45, mismatchGst: 16200,
+      missingCount: 30, missingGst: 5900,
+      counts: {total: 195, matched: 120, mismatch: 25, missing: 30, ineligible: 18, review: 2},
+      trend: [
+        {m:"Feb 2026", v:40000}, {m:"Mar 2026", v:58000}, {m:"Apr 2026", v:85000},
+        {m:"May 2026", v:92000}, {m:"Jun 2026", v:145000}, {m:"Jul 2026", v:180000}
+      ],
+      vendors: [
+        {name:"Sharma Traders", amount:32000}, {name:"Gupta & Sons", amount:28000},
+        {name:"Agarwal Cement", amount:18000}, {name:"BuildPro Supplies", amount:12000},
+        {name:"Rajasthan Hardware", amount:9000}
+      ]
     };
-    monthlyTrend = [
-      {m:"Feb 2026", v:40000},
-      {m:"Mar 2026", v:58000},
-      {m:"Apr 2026", v:85000},
-      {m:"May 2026", v:92000},
-      {m:"Jun 2026", v:145000},
-      {m:"Jul 2026", v:180000}
-    ];
-    topVendors = [
-      {name:"Sharma Traders", amount:32000},
-      {name:"Gupta & Sons", amount:28000},
-      {name:"Agarwal Cement", amount:18000},
-      {name:"BuildPro Supplies", amount:12000},
-      {name:"Rajasthan Hardware", amount:9000}
-    ];
   } else {
-    const invs = (S.data && S.data.invoices) || [];
-    const summary = (S.data && S.data.summary) || {};
-    const recon = (S.data && S.data.reconciliation && S.data.reconciliation.latest) || {};
-    const results = (S.data && S.data.reconciliation && S.data.reconciliation.results) || [];
+    m = dashboardModel();
+  }
+  const attention = m.mismatchCount + m.missingCount;
+  const batches = (S.data && S.data.gstr2b && S.data.gstr2b.imports) || [];
+  const latestBatch = batches[0];
+  const drafts = (S.data && S.data.followups) || [];
+  const readyToSend = drafts.filter(d => d.status === "APPROVED" && d.workflow_status !== "RESOLVED").length;
+  const pendingDrafts = drafts.filter(d => d.workflow_status === "PENDING" || d.workflow_status === "NEEDS_REVIEW").length;
+  const filtered = !isDemo && Object.values(S.filters.dashboard || {}).some(Boolean);
 
-    totalInvoices = invs.length;
-    eligibleGst = summary.gst_total || invs.reduce((a,c) => a + (c.gst||0), 0);
-    const invalidInvs = invs.filter(i => ["invalid", "needs_review"].includes(i.validation));
-    ineligibleGst = invalidInvs.reduce((a,c) => a + (c.gst||0), 0);
-
-    matchedCount = recon.matched || 0;
-    mismatchCount = (recon.amount_mismatch || 0) + (recon.review || 0);
-    missingCount = recon.missing || 0;
-
-    matchedGst = results.filter(r => r.status === "MATCHED").reduce((a,c) => a + (c.invoice_gst||0), 0);
-    mismatchGst = results.filter(r => ["AMOUNT_MISMATCH", "NEEDS_REVIEW"].includes(r.status)).reduce((a,c) => a + (c.invoice_gst||0), 0);
-    missingGst = results.filter(r => r.status === "MISSING_FROM_2B").reduce((a,c) => a + (c.invoice_gst||0), 0);
-
-    const reconTotal = matchedCount + mismatchCount + missingCount + (recon.not_eligible || 0);
-    reconStatusCounts = {
-      total: reconTotal || totalInvoices,
-      matched: matchedCount,
-      mismatch: recon.amount_mismatch || 0,
-      missing: missingCount,
-      ineligible: recon.not_eligible || 0,
-      review: recon.review || 0
-    };
-
-    monthlyTrend = buildLiveMonthlyTrend(invs);
-    topVendors = buildLiveTopVendors(invs);
+  const banner = (tone, title, body, action, label) => `
+    <div class="alert-banner ${tone}">
+      <div class="alert-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${tone === "ok"
+          ? '<polyline points="20 6 9 17 4 12"/>'
+          : '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'}</svg>
+      </div>
+      <div class="alert-body"><b>${title}</b><small>${body}</small></div>
+      <button class="alert-btn" onclick="${action}">${label} &rarr;</button>
+    </div>`;
+  let alertHtml;
+  if (!isDemo && !m.invsAll.length) {
+    alertHtml = banner("", "Ready for reconciliation", "Upload your purchase invoices and GSTR-2B to detect ITC mismatches.", "openUploadModal('invoices')", "Upload invoices");
+  } else if (!m.hasRun) {
+    alertHtml = banner("", "Reconciliation has not been run", "Import GSTR-2B and run reconciliation to compare it with your purchase register.", "setView('reconciliation')", "Go to reconciliation");
+  } else if (attention > 0) {
+    alertHtml = banner("", `${plural(attention, "invoice needs", "invoices need")} your review`, "These invoices may be recoverable. Review and take action.", "setView('reconciliation')", "Review mismatches");
+  } else {
+    alertHtml = banner("ok", "No open mismatches in the latest run", "Every reconciled purchase invoice matched GSTR-2B.", "setView('reconciliation')", "View summary");
   }
 
-  const alertHtml = mismatchCount > 0 ? `
-    <div class="alert-banner">
-      <div class="alert-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  const kpi = (tint, icon, label, value, sub, info) => `
+    <div class="kpi-card tint-${tint}">
+      <div class="kpi-ic-box ${tint}">${icon}</div>
+      <div class="kpi-body">
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-val">${value}</div>
+        <div class="kpi-sub">${sub}</div>
       </div>
-      <div class="alert-body">
-        <b>${mismatchCount} ${mismatchCount === 1 ? 'mismatch needs' : 'mismatches need'} your review</b>
-        <small>These invoices may be recoverable. Review and take action.</small>
-      </div>
-      <button class="alert-btn" onclick="setView('reconciliation')">Review mismatches &rarr;</button>
-    </div>
-  ` : (totalInvoices > 0 ? `
-    <div class="alert-banner" style="background:#f0fdf4;border-color:#bbf7d0">
-      <div class="alert-icon" style="background:#dcfce7;color:#16a34a">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <div class="alert-body">
-        <b style="color:#15803d">All purchase invoices reconciled</b>
-        <small style="color:#166534">No pending mismatches found between purchase register and GSTR-2B.</small>
-      </div>
-      <button class="alert-btn" style="background:#16a34a" onclick="setView('reconciliation')">View Summary &rarr;</button>
-    </div>
-  ` : `
-    <div class="alert-banner">
-      <div class="alert-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      </div>
-      <div class="alert-body">
-        <b>Ready for reconciliation</b>
-        <small>Upload your purchase invoices and GSTR-2B to detect ITC mismatches.</small>
-      </div>
-      <button class="alert-btn" onclick="openUploadModal('invoices')">Upload Invoices &rarr;</button>
-    </div>
-  `);
+      <span class="kpi-info-btn" title="${esc(info)}">(i)</span>
+    </div>`;
+  const opts = dashboardFilterOptions(isDemo ? [] : m.invsAll, isDemo ? [] : m.resultsAll || []);
+  const step = (state, mark, title, sub) => `
+    <div class="workflow-step ${state}">
+      <div class="step-circle ${state}">${mark}</div>
+      <div class="step-info"><b>${title}</b><small>${sub}</small></div>
+    </div>`;
+  const step2 = isDemo
+    ? step("done", "✓", "Import GSTR-2B", "July 2026 imported")
+    : !latestBatch
+      ? step("pending", "2", "Import GSTR-2B", "No GSTR-2B imported")
+      : latestBatch.accepted
+        ? step("done", "✓", "Import GSTR-2B", `${esc(periodLabel(latestBatch.period) || latestBatch.file)} imported`)
+        : step("active", "!", "Import GSTR-2B", "Latest import has no valid rows");
+  const step3 = !m.hasRun
+    ? step(latestBatch || isDemo ? "active" : "pending", "3", "Reconcile", "Not run yet")
+    : step(attention ? "active" : "done", attention ? "◎" : "✓", "Reconcile",
+        attention ? `${plural(attention, "issue", "issues")} to review` : "No open issues");
 
   return `
     <div class="page-header">
@@ -1376,176 +1545,107 @@ function renderDashboard() {
     </div>
 
     <div class="kpi-row">
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box purple">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8h10M7 12h7"/></svg>
-          </div>
-          <button class="kpi-info-btn" title="Total eligible Input Tax Credit">(i)</button>
-        </div>
-        <div class="kpi-label">Eligible ITC</div>
-        <div class="kpi-val">${inr(eligibleGst)}</div>
-        <div class="kpi-sub">Across ${totalInvoices} invoices</div>
-      </div>
-
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box red">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-          </div>
-          <button class="kpi-info-btn" title="Ineligible ITC">(i)</button>
-        </div>
-        <div class="kpi-label">Ineligible ITC</div>
-        <div class="kpi-val">${inr(ineligibleGst)}</div>
-        <div class="kpi-sub">Across ${reconStatusCounts.ineligible || 0} invoices</div>
-      </div>
-
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box green">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-          </div>
-          <button class="kpi-info-btn" title="Matched in 2B">(i)</button>
-        </div>
-        <div class="kpi-label">Matched</div>
-        <div class="kpi-val">${matchedCount} invoices</div>
-        <div class="kpi-sub">${inr(matchedGst)} ITC</div>
-      </div>
-
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box amber">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          </div>
-          <button class="kpi-info-btn" title="Mismatched amounts or details">(i)</button>
-        </div>
-        <div class="kpi-label">Mismatches</div>
-        <div class="kpi-val">${mismatchCount} invoices</div>
-        <div class="kpi-sub">${inr(mismatchGst)} ITC</div>
-      </div>
-
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box red">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="9" y1="12" x2="15" y2="18"/><line x1="15" y1="12" x2="9" y2="18"/></svg>
-          </div>
-          <button class="kpi-info-btn" title="Missing from supplier GSTR-2B">(i)</button>
-        </div>
-        <div class="kpi-label">Missing from 2B</div>
-        <div class="kpi-val">${missingCount} invoices</div>
-        <div class="kpi-sub">${inr(missingGst)} ITC</div>
-      </div>
+      ${kpi("purple", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
+        "Eligible ITC", inr(m.eligibleGst), `Across ${plural(m.eligibleCount, "invoice", "invoices")}`,
+        "GST on purchase invoices that passed validation")}
+      ${kpi("red", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>',
+        "Ineligible ITC", inr(m.ineligibleGst), `Across ${plural(m.ineligibleCount, "invoice", "invoices")}`,
+        "GST on invoices that are invalid or need checking")}
+      ${kpi("green", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
+        "Matched", plural(m.matchedCount, "invoice", "invoices"), `${inr(m.matchedGst)} ITC`,
+        "Matched with GSTR-2B in the latest reconciliation run")}
+      ${kpi("amber", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        "Mismatches", plural(m.mismatchCount, "invoice", "invoices"), `${inr(m.mismatchGst)} ITC`,
+        "Amount mismatches plus invoices that need review in the latest run")}
+      ${kpi("red", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M10 12l4 4M14 12l-4 4"/></svg>',
+        "Missing from 2B", plural(m.missingCount, "invoice", "invoices"), `${inr(m.missingGst)} ITC`,
+        "Purchase invoices with no GSTR-2B row in the latest run")}
     </div>
 
-    <!-- Filters -->
-    <div class="filter-row">
-      <div class="filter-field">
-        <label>Filing period</label>
-        <select><option>July 2026</option><option>June 2026</option><option>May 2026</option></select>
-      </div>
-      <div class="filter-field">
-        <label>GSTIN</label>
-        <select><option>All GSTINs</option><option>29ABCDE1234F1Z5</option><option>08FGHIK5678L1Z2</option></select>
-      </div>
-      <div class="filter-field">
-        <label>Supplier</label>
-        <select><option>All suppliers</option><option>Sharma Traders</option><option>Gupta & Sons</option></select>
-      </div>
-      <div class="filter-field">
-        <label>Status</label>
-        <select><option>All statuses</option><option>Matched</option><option>Mismatch</option><option>Missing</option></select>
-      </div>
-      <button class="btn btn-primary" onclick="toast('Filters applied to dashboard.')" style="margin-left:auto">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-        Apply filters
-      </button>
-    </div>
-
-    <!-- Main Grid -->
     <div class="dashboard-grid">
       <div class="dash-left">
-        <!-- Monthly ITC Trend Line Chart -->
-        <div class="card">
-          <div class="card-header-row">
-            <div>
-              <h3>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                Monthly ITC Trend
-              </h3>
-              <p>Eligible ITC identified from your purchase invoices (last 6 months)</p>
-            </div>
-            <select class="filter-select"><option>Eligible ITC</option><option>Total Invoiced</option></select>
+        <div class="filter-row">
+          <div class="filter-field">
+            <label>Filing period</label>
+            ${filterSelect("dashboard", "period", "All periods", opts.periods)}
           </div>
-          <div style="width:100%;height:220px;position:relative">
-            ${renderTrendChartSvg(monthlyTrend)}
+          <div class="filter-field">
+            <label>GSTIN</label>
+            ${filterSelect("dashboard", "gstin", "All GSTINs", opts.gstins)}
           </div>
+          <div class="filter-field">
+            <label>Supplier</label>
+            ${filterSelect("dashboard", "supplier", "All suppliers", opts.suppliers)}
+          </div>
+          <div class="filter-field">
+            <label>Status</label>
+            ${filterSelect("dashboard", "status", "All statuses", opts.statuses)}
+          </div>
+          <button class="btn btn-primary" onclick="applyFilters('dashboard')" ${isDemo ? 'disabled title="Filters apply to live data"' : ""}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Apply filters
+          </button>
+          ${filtered ? `<button class="btn btn-secondary" onclick="clearFilters('dashboard')">Clear</button>` : ""}
         </div>
 
-        <!-- 2 Sub-cards: Status Donut & Vendor Bar -->
-        <div class="dash-sub-grid">
-          <!-- Donut Card -->
-          <div class="card">
-            <div class="card-header-row">
-              <h3>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
-                Reconciliation Status
-              </h3>
-            </div>
-            ${renderDonutChartSvg(reconStatusCounts)}
-          </div>
-
-          <!-- Vendor Bar Card -->
+        <div class="dash-main">
           <div class="card">
             <div class="card-header-row">
               <div>
                 <h3>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                  Vendor-wise Eligible ITC
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.2"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+                  Monthly ITC Trend
+                </h3>
+                <p>${S.dashMetric === "total" ? "Total invoiced value from your purchase invoices (last 6 months)" : "Eligible ITC identified from your purchase invoices (last 6 months)"}</p>
+              </div>
+              <select class="filter-select" onchange="S.dashMetric=this.value;render()" ${isDemo ? "disabled" : ""}>
+                <option value="eligible" ${S.dashMetric !== "total" ? "selected" : ""}>Eligible ITC</option>
+                <option value="total" ${S.dashMetric === "total" ? "selected" : ""}>Total Invoiced</option>
+              </select>
+            </div>
+            <div style="width:100%;height:230px;position:relative">
+              ${m.trend.length ? renderTrendChartSvg(m.trend) : `<div class="chart-empty">No purchase invoices${filtered ? " match these filters" : " yet"}</div>`}
+            </div>
+          </div>
+
+          <div class="dash-stack">
+            <div class="card">
+              <div class="card-header-row">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+                  Reconciliation Status
                 </h3>
               </div>
-              <select class="filter-select"><option>Top 5 suppliers</option></select>
+              ${m.counts.total ? renderDonutChartSvg(m.counts) : `<div class="chart-empty" style="height:140px">${m.hasRun ? "No reconciled invoices match these filters" : "Run reconciliation to see status"}</div>`}
             </div>
-            <div style="width:100%;height:140px;position:relative">
-              ${renderVendorBarsSvg(topVendors)}
+            <div class="card">
+              <div class="card-header-row">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 20V10M12 20V4M18 20v-6"/></svg>
+                  Vendor-wise Eligible ITC
+                </h3>
+                <select class="filter-select"><option>Top 5 suppliers</option></select>
+              </div>
+              <div style="width:100%;height:140px;position:relative">
+                ${renderVendorBarsSvg(m.vendors)}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Right Column: Workflow -->
-      <div class="card" style="height:fit-content">
+      <div class="card workflow-card">
         <h3 style="margin-bottom:18px;font-size:16px;color:var(--ink);font-weight:700">Reconciliation Workflow</h3>
         <div style="display:flex;flex-direction:column">
-          <div class="workflow-step done">
-            <div class="step-circle done">✓</div>
-            <div class="step-info">
-              <b>Import purchase invoices</b>
-              <small>${totalInvoices} invoices imported</small>
-            </div>
-          </div>
-          <div class="workflow-step ${(S.data?.summary?.gstr2b_batches || isDemo) ? 'done' : 'pending'}">
-            <div class="step-circle ${(S.data?.summary?.gstr2b_batches || isDemo) ? 'done' : 'pending'}">${(S.data?.summary?.gstr2b_batches || isDemo) ? '✓' : '2'}</div>
-            <div class="step-info">
-              <b>Import GSTR-2B</b>
-              <small>${(S.data?.summary?.gstr2b_batches || isDemo) ? 'July 2026 imported' : 'No GSTR-2B imported'}</small>
-            </div>
-          </div>
-          <div class="workflow-step ${(mismatchCount > 0 || isDemo) ? 'active' : ''}">
-            <div class="step-circle ${(mismatchCount > 0 || isDemo) ? 'active' : 'pending'}">◎</div>
-            <div class="step-info">
-              <b>Reconcile</b>
-              <small>${mismatchCount} ${mismatchCount === 1 ? 'mismatch' : 'mismatches'} to review</small>
-            </div>
-          </div>
-          <div class="workflow-step">
-            <div class="step-circle pending">4</div>
-            <div class="step-info">
-              <b>Supplier follow-ups</b>
-              <small>${isDemo ? 5 : ((S.data && (S.data.followups || S.data.drafts)) ? (S.data.followups || S.data.drafts).length : 0)} drafts ready to send</small>
-            </div>
-          </div>
+          ${m.invsAll.length || isDemo
+            ? step("done", "✓", "Import purchase invoices", `${plural(isDemo ? 150 : m.invsAll.length, "invoice", "invoices")} imported`)
+            : step("active", "1", "Import purchase invoices", "No invoices imported")}
+          ${step2}
+          ${step3}
+          ${step(readyToSend || isDemo ? "active" : "pending", "4", "Supplier follow-ups",
+              isDemo ? "5 drafts ready to send" : `${plural(readyToSend, "draft", "drafts")} ready to send · ${pendingDrafts} awaiting review`)}
         </div>
-        <button class="btn btn-primary" style="width:100%;margin-top:22px" onclick="setView('reconciliation')">
+        <button class="btn btn-primary" style="width:100%;margin-top:22px;justify-content:center" onclick="setView('reconciliation')">
           Continue reconciliation &rarr;
         </button>
       </div>
@@ -1553,16 +1653,81 @@ function renderDashboard() {
   `;
 }
 
+function dashboardFilterOptions(invs, results) {
+  const present = new Set(results.map(r => r.status));
+  return {
+    periods: uniqueOptions(invs.map(periodOf), periodLabel).reverse(),
+    gstins: uniqueOptions(invs.map(i => i.gstin)),
+    suppliers: uniqueOptions(invs.map(i => i.supplier)),
+    statuses: ["MATCHED","AMOUNT_MISMATCH","MISSING_FROM_2B","NEEDS_REVIEW",
+               "NOT_ELIGIBLE","ITC_UNAVAILABLE"]
+      .filter(code => present.has(code))
+      .map(code => ({value: code, label: reconStatusLabel(code)}))
+  };
+}
+
 // ------------------- PAGE 2: PURCHASE INVOICES -------------------
+function invoiceFilterOptions(list) {
+  return {
+    periods: uniqueOptions(list.map(periodOf), periodLabel).reverse(),
+    suppliers: uniqueOptions(list.map(i => i.supplier)),
+    statuses: [{value: "valid", label: "Valid"}, {value: "needs_review", label: "Check required"},
+               {value: "invalid", label: "Invalid"}]
+  };
+}
+
+function applyInvoiceFilters(list, f) {
+  f = f || {};
+  return list.filter(i =>
+    (!f.period || periodOf(i) === f.period) &&
+    (!f.supplier || i.supplier === f.supplier) &&
+    (!f.status || i.validation === f.status));
+}
+
+function recentlyUploaded(list, now = Date.now()) {
+  const weekAgo = now - 7 * 24 * 3600 * 1000;
+  return list.filter(i => {
+    const t = Date.parse(String(i.created || "").replace(" ", "T") + (i.created && !/Z|[+-]\d\d:?\d\d$/.test(i.created) ? "Z" : ""));
+    return !isNaN(t) && t >= weekAgo;
+  }).length;
+}
+
+// Filters on pages without an Apply button take effect immediately.
+function instantSelect(page, key, allLabel, options) {
+  const current = S.filters[page][key] || "";
+  const opts = options.some(o => o.value === current) || !current
+    ? options : [...options, {value: current, label: periodLabel(current)}];
+  return `<select onchange="setInstantFilter('${page}','${key}',this.value)">
+    <option value="">${esc(allLabel)}</option>
+    ${opts.map(o => `<option value="${esc(o.value)}" ${o.value === current ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+  </select>`;
+}
+
+function setInstantFilter(page, key, value) {
+  S.filters[page] = {...S.filters[page], [key]: value};
+  S.filterDraft[page] = {...S.filterDraft[page], [key]: value};
+  S.pages[page] = 1;
+  render();
+}
+
 function renderInvoices() {
   const isDemo = S.demoMode;
   const invoices = isDemo ? BASELINE_INVOICES : ((S.data && S.data.invoices) ? S.data.invoices : []);
-  const filtered = filterList(invoices, ["number","supplier","gstin","validation"]);
+  const options = invoiceFilterOptions(invoices);
+  const filtered = filterList(applyInvoiceFilters(invoices, S.filters.invoices), ["number","supplier","gstin","validation"]);
   const totalCount = invoices.length;
   const validCount = invoices.filter(i=>i.validation==="valid").length;
   const issuesCount = invoices.filter(i=>["invalid","needs_review"].includes(i.validation)).length;
-  const recentlyCount = isDemo ? 5 : Math.min(totalCount, 5);
-  const paged = paginate(filtered, S.pages.invoices, 10, totalCount);
+  const recentlyCount = isDemo ? 5 : recentlyUploaded(invoices);
+  const paged = paginate(filtered, S.pages.invoices, 10);
+  const card = (tint, icon, label, value, extra = "") => `
+    <div class="kpi-card">
+      <div class="kpi-ic-box ${tint}">${icon}</div>
+      <div class="kpi-body">
+        <div class="kpi-label" style="color:${tint === "gray" ? "var(--ink-secondary)" : `var(--${tint === "purple" ? "brand" : tint})`}">${label}</div>
+        <div class="kpi-val">${value} ${extra}</div>
+      </div>
+    </div>`;
 
   return `
     <div class="page-header">
@@ -1573,73 +1738,35 @@ function renderInvoices() {
       <button class="btn btn-primary" onclick="openUploadModal('invoices')">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Upload Invoices
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
       </button>
     </div>
 
     <div class="kpi-row cols-4">
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box purple">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          </div>
-        </div>
-        <div class="kpi-label">Total Invoices</div>
-        <div class="kpi-val">${totalCount}</div>
-      </div>
-
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box green">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>
-          </div>
-        </div>
-        <div class="kpi-label">Valid Invoices</div>
-        <div class="kpi-val">${validCount}</div>
-      </div>
-
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box amber">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          </div>
-        </div>
-        <div class="kpi-label">Issues Found</div>
-        <div class="kpi-val">${issuesCount}</div>
-      </div>
-
-      <div class="kpi-card">
-        <div class="kpi-top">
-          <div class="kpi-ic-box gray">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
-          </div>
-        </div>
-        <div class="kpi-label">Recently Uploaded</div>
-        <div class="kpi-val">${recentlyCount} <span style="font-size:12px;font-weight:400;color:var(--muted)">in last 7 days</span></div>
-      </div>
+      ${card("purple", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>', "Total Invoices", totalCount)}
+      ${card("green", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="8 12 11 15 16 9"/></svg>', "Valid Invoices", validCount)}
+      ${card("amber", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>', "Issues Found", issuesCount)}
+      ${card("gray", '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>', "Recently Uploaded", recentlyCount, '<span style="font-size:12px;font-weight:400;color:var(--muted)">in last 7 days</span>')}
     </div>
 
-    <!-- Filters Row -->
     <div class="filter-row">
       <div class="filter-field">
         <label>Tax period</label>
-        <select><option>July 2026</option><option>June 2026</option></select>
+        ${instantSelect("invoices", "period", "All periods", options.periods)}
       </div>
       <div class="filter-field">
         <label>Supplier</label>
-        <select><option>All suppliers</option></select>
+        ${instantSelect("invoices", "supplier", "All suppliers", options.suppliers)}
       </div>
       <div class="filter-field">
         <label>Status</label>
-        <select id="invoice-status-filter" onchange="render()"><option value="">All statuses</option><option value="valid">Valid</option><option value="needs_review">Check required</option><option value="invalid">Invalid</option></select>
+        ${instantSelect("invoices", "status", "All statuses", options.statuses)}
       </div>
       <div class="filter-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input placeholder="Search invoice no., supplier, GSTIN..." value="${esc(S.search)}" oninput="S.search=this.value;render()">
+        <input placeholder="Search invoice no., supplier, GSTIN..." value="${esc(S.search)}" data-focus-key="page-search" oninput="S.search=this.value;S.pages[S.view]=1;render()">
       </div>
     </div>
 
-    <!-- Table -->
     <div class="table-card">
       <table class="data-table">
         <thead>
@@ -1661,18 +1788,18 @@ function renderInvoices() {
               <td><input type="checkbox"></td>
               <td><b>${esc(b.number)}</b></td>
               <td>${fmtDate(b.date)}</td>
-              <td>${esc(b.supplier)}</td>
+              <td>${esc(b.supplier || "—")}</td>
               <td style="font-family:monospace;font-size:12px">${esc(b.gstin)}</td>
-              <td class="right">${Number(b.total||b.taxable||0).toLocaleString('en-IN')}</td>
-              <td class="right">${Number(b.gst||0).toLocaleString('en-IN')}</td>
+              <td class="right">${amountCell(b.total)}</td>
+              <td class="right">${amountCell(b.gst)}</td>
               <td>${getBadge(b.validation)}</td>
-              <td class="center"><button class="kebab-btn" onclick="openEvidenceModal(${b.id})">⋮</button></td>
+              <td class="center"><button class="kebab-btn" onclick="openInvoiceModal(${b.id})" aria-label="Invoice details">⋮</button></td>
             </tr>
-          `).join("") : `
+          `).join("") : invoices.length ? noInstantMatches(9, "invoices") : `
             <tr>
               <td colspan="9" style="text-align:center;padding:48px 24px;color:var(--muted)">
                 <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">No purchase invoices found</div>
-                <div style="margin-bottom:16px">Upload purchase invoices in CSV or Excel format to begin reconciliation.</div>
+                <div style="margin-bottom:16px">Upload purchase invoices as CSV or Excel (.xlsx) using the invoice template.</div>
                 <button class="btn btn-primary" onclick="openUploadModal('invoices')">+ Upload Invoices</button>
               </td>
             </tr>
@@ -1680,60 +1807,130 @@ function renderInvoices() {
         </tbody>
       </table>
       <div class="table-footer">
-        <div>Showing ${paged.start}–${paged.end} of ${totalCount} invoices</div>
+        <div>Showing ${paged.start}–${paged.end} of ${filtered.length} invoices${filtered.length !== totalCount ? ` (filtered from ${totalCount})` : ""}</div>
         ${renderPagination(paged.page, paged.pages, 'invoices')}
       </div>
     </div>
   `;
 }
 
+function noInstantMatches(colspan, page) {
+  return `
+    <tr>
+      <td colspan="${colspan}" style="text-align:center;padding:48px 24px;color:var(--muted)">
+        <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">No records match these filters</div>
+        <button class="btn btn-secondary" onclick="S.search='';clearFilters('${page}')">Clear filters</button>
+      </td>
+    </tr>`;
+}
+
+function openInvoiceModal(id) {
+  const list = S.demoMode ? BASELINE_INVOICES : ((S.data && S.data.invoices) || []);
+  const inv = list.find(i => i.id === id);
+  if (!inv) { toast("This invoice is no longer available. Refresh the page.", "bad"); return; }
+  const result = S.demoMode ? null : ((S.data && S.data.reconciliation && S.data.reconciliation.results) || [])
+    .find(r => r.invoice_id === id);
+  const row = (k, v) => `<div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid var(--line-light)"><span style="color:var(--muted)">${k}</span><b>${v}</b></div>`;
+  $("#draft-modal-content").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2>Invoice ${esc(inv.number)}</h2>
+        <p>${esc(inv.supplier || "—")} (${esc(inv.gstin || "—")})</p>
+      </div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div style="font-size:13px">
+      ${row("Invoice date", esc(fmtDate(inv.date)))}
+      ${row("Tax period", esc(periodLabel(periodOf(inv)) || "—"))}
+      ${row("Taxable value", inr(inv.taxable))}
+      ${row("CGST / SGST / IGST", `${inr(inv.cgst)} / ${inr(inv.sgst)} / ${inr(inv.igst)}`)}
+      ${row("Total GST (ITC)", inr(inv.gst))}
+      ${row("Invoice value", inr(inv.total))}
+      ${row("Validation", getBadge(inv.validation))}
+      ${row("Latest reconciliation", result ? getReconBadge(result.status) : '<span style="color:var(--muted)">Not reconciled yet</span>')}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+      ${result ? `<button class="btn btn-outline-purple" onclick="closeModal();openEvidenceModal(${result.id})">View reconciliation evidence</button>` : ""}
+      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    </div>`;
+  $("#draft-modal").classList.remove("hide");
+}
+
 // ------------------- PAGE 3: GSTR-2B IMPORT -------------------
+function gstrRowStatus(validation) {
+  if (validation === "valid") return {value: "valid", label: "Imported", cls: "badge-imported"};
+  if (validation === "needs_review") return {value: "needs_review", label: "Check required", cls: "badge-check"};
+  return {value: "invalid", label: "Rejected", cls: "badge-invalid"};
+}
+
+function applyGstrFilters(list, f) {
+  f = f || {};
+  return list.filter(r =>
+    (!f.period || periodOf(r) === f.period) &&
+    (!f.batch || String(r.batch) === String(f.batch)) &&
+    (!f.status || gstrRowStatus(r.validation).value === f.status));
+}
+
 function renderGstr2b() {
   const isDemo = S.demoMode;
   const g = (S.data && S.data.gstr2b) || {rows:[], imports:[]};
   const batches = isDemo ? BASELINE_BATCHES : (g.imports || []);
-  const rows = isDemo ? BASELINE_INVOICES : (g.rows || []);
-  const filtered = filterList(rows, ["number","gstin","supplier","validation"]);
+  const rows = isDemo ? BASELINE_INVOICES.map(r => ({...r, validation: "valid"})) : (g.rows || []);
+  const filtered = filterList(applyGstrFilters(rows, S.filters.gstr2b), ["number","gstin","supplier"]);
   const totalCount = rows.length;
-  const paged = paginate(filtered, S.pages.gstr2b, 10, totalCount);
+  const paged = paginate(filtered, S.pages.gstr2b, 10);
+  const latest = batches[0];
+  const periodOptions = uniqueOptions(rows.map(periodOf), periodLabel).reverse();
+  const batchOptions = isDemo ? [] : batches.map(b => ({value: String(b.id), label: `#${b.id} · ${b.file}`}));
+  const statusOptions = [{value: "valid", label: "Imported"}, {value: "needs_review", label: "Check required"},
+                         {value: "invalid", label: "Rejected"}];
 
   return `
     <div class="page-header">
       <div class="page-title">
         <h1>GSTR-2B Import</h1>
-        <p>Upload your GSTR-2B JSON file to extract invoices for reconciliation.</p>
+        <p>Upload your GSTR-2B file to extract invoices for reconciliation.</p>
       </div>
     </div>
 
-    <!-- Upload Dropzone Card matching screenshot -->
     <div class="upload-card">
       <div class="upload-dropzone" onclick="openUploadModal('gstr2b')">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 8z"/><path d="M12 11v7M9 14l3-3 3 3"/></svg>
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 8z"/><path d="M12 11v7M9 14l3-3 3 3"/></svg>
         <h3>Upload GSTR-2B JSON File</h3>
-        <p>Drag and drop your JSON <a href="#" onclick="event.preventDefault()">file here or click to browse</a></p>
+        <p>Drag and drop your GSTR-2B file here or <a href="#" onclick="event.preventDefault()">click to browse</a></p>
         <button class="btn btn-primary" onclick="event.stopPropagation();openUploadModal('gstr2b')">Choose File</button>
-        <div class="hint">Only JSON files (max 50 MB)</div>
+        <div class="hint">GST portal JSON or Excel (.xlsx), or CSV · max 25 MB</div>
       </div>
     </div>
 
-    <!-- Filters Row -->
     <div class="filter-row">
       <div class="filter-field">
         <label>Tax period</label>
-        <select><option>July 2026</option><option>June 2026</option></select>
+        ${instantSelect("gstr2b", "period", "All periods", periodOptions)}
       </div>
+      ${isDemo ? "" : `<div class="filter-field">
+        <label>Import batch</label>
+        ${instantSelect("gstr2b", "batch", "All batches", batchOptions)}
+      </div>`}
       <div class="filter-field">
         <label>Status</label>
-        <select><option>All statuses</option><option>Imported</option></select>
+        ${instantSelect("gstr2b", "status", "All statuses", statusOptions)}
       </div>
       <div class="filter-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input placeholder="Search invoice no., supplier, GSTIN..." value="${esc(S.search)}" oninput="S.search=this.value;render()">
+        <input placeholder="Search invoice no., supplier, GSTIN..." value="${esc(S.search)}" data-focus-key="page-search" oninput="S.search=this.value;S.pages[S.view]=1;render()">
       </div>
     </div>
 
-    <!-- Table -->
     <div class="table-card">
+      ${!isDemo && latest ? `
+        <div class="batch-summary">
+          <span>Latest import <b>#${esc(latest.id)} · ${esc(latest.file)}</b></span>
+          <span>${esc(fmtDate(latest.at))}</span>
+          <span><b>${esc(latest.accepted)}</b> accepted</span>
+          <span><b>${esc(latest.rejected)}</b> rejected</span>
+          ${latest.accepted ? "" : `<span class="badge badge-invalid">No valid rows: fix the file and import it again before reconciling</span>`}
+        </div>` : ""}
       <table class="data-table">
         <thead>
           <tr>
@@ -1742,28 +1939,31 @@ function renderGstr2b() {
             <th>Date</th>
             <th>Supplier Name</th>
             <th>GSTIN</th>
-            <th class="right">Invoice Value (₹)</th>
+            <th class="right">Taxable Value (₹)</th>
             <th class="right">ITC (₹)</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
-          ${paged.items.length ? paged.items.map(r => `
+          ${paged.items.length ? paged.items.map(r => {
+            const st = gstrRowStatus(r.validation);
+            const issues = (r.issues || []).map(i => i.message || i.code).filter(Boolean).join("; ");
+            return `
             <tr>
               <td><input type="checkbox"></td>
-              <td><b>${esc(r.number)}</b></td>
+              <td><b>${esc(r.number || "—")}</b></td>
               <td>${fmtDate(r.date)}</td>
-              <td>${esc(r.supplier || "Supplier")}</td>
-              <td style="font-family:monospace;font-size:12px">${esc(r.gstin)}</td>
-              <td class="right">${Number(r.total || r.taxable || 0).toLocaleString('en-IN')}</td>
-              <td class="right">${Number(r.gst || 0).toLocaleString('en-IN')}</td>
-              <td><span class="badge badge-imported">Imported</span></td>
-            </tr>
-          `).join("") : `
+              <td>${esc(r.supplier || "—")}</td>
+              <td style="font-family:monospace;font-size:12px">${esc(r.gstin || "—")}</td>
+              <td class="right">${amountCell(isDemo ? r.total : r.taxable)}</td>
+              <td class="right">${amountCell(r.gst)}</td>
+              <td><span class="badge ${st.cls}" ${issues ? `title="${esc(issues)}"` : ""}>${st.label}</span></td>
+            </tr>`;
+          }).join("") : rows.length ? noInstantMatches(8, "gstr2b") : `
             <tr>
               <td colspan="8" style="text-align:center;padding:48px 24px;color:var(--muted)">
                 <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">No GSTR-2B data imported yet</div>
-                <div style="margin-bottom:16px">Upload a GSTR-2B JSON or Excel file downloaded from the GST portal.</div>
+                <div style="margin-bottom:16px">Upload the GSTR-2B JSON or Excel file downloaded from the GST portal.</div>
                 <button class="btn btn-primary" onclick="openUploadModal('gstr2b')">Upload GSTR-2B</button>
               </td>
             </tr>
@@ -1771,7 +1971,7 @@ function renderGstr2b() {
         </tbody>
       </table>
       <div class="table-footer">
-        <div>Showing ${paged.start}–${paged.end} of ${totalCount} invoices</div>
+        <div>Showing ${paged.start}–${paged.end} of ${filtered.length} invoices${filtered.length !== totalCount ? ` (filtered from ${totalCount})` : ""}</div>
         ${renderPagination(paged.page, paged.pages, 'gstr2b')}
       </div>
     </div>
@@ -1782,37 +1982,21 @@ function renderGstr2b() {
 function renderReconciliation() {
   const isDemo = S.demoMode;
   const recon = (S.data && S.data.reconciliation) || {};
-  const invMap = {};
-  if (S.data && S.data.invoices) {
-    S.data.invoices.forEach(i => { invMap[i.id] = i; });
-  }
 
   let list;
   if (isDemo) {
     list = BASELINE_RECON;
   } else {
-    list = (recon.results || []).map(x => {
-      const inv = invMap[x.invoice_id] || {};
-      return {
-        id: x.id,
-        number: x.number || inv.number || "",
-        date: inv.date || "2026-07-03",
-        supplier: x.supplier || inv.supplier || "Supplier",
-        gstin: x.gstin || inv.gstin || "—",
-        reg_val: inv.total || (x.invoice_gst ? x.invoice_gst * 5 : 0),
-        reg_gst: x.invoice_gst || 0,
-        twob_val: x.twob_number ? (x.twob_gst ? x.twob_gst * 5 : 0) : 0,
-        twob_gst: x.twob_gst || 0,
-        diff_val: (inv.total || 0) - (x.twob_number ? (x.twob_gst ? x.twob_gst * 5 : 0) : 0),
-        diff_gst: x.difference || 0,
-        status: x.status
-      };
-    });
+    list = (recon.results || []).map(reconRowView);
   }
 
-  const filtered = filterList(list, ["number","supplier","gstin","status"]);
+  const options = reconFilterOptions(list);
+  const filtered = filterList(applyReconFilters(list, S.filters.reconciliation), ["number","supplier","gstin","status"]);
   const totalCount = list.length;
-  const paged = paginate(filtered, S.pages.reconciliation, 10, totalCount);
+  const paged = paginate(filtered, S.pages.reconciliation, 10);
+  const batches = (S.data && S.data.gstr2b && S.data.gstr2b.imports) || [];
+  const latestBatch = batches[0];
+  const runBlocked = S.reconBusy || isDemo || !latestBatch;
 
   return `
     <div class="page-header">
@@ -1820,33 +2004,38 @@ function renderReconciliation() {
         <h1>Reconciliation</h1>
         <p>Compare your purchase invoices with GSTR-2B, find mismatches, and recover your eligible ITC.</p>
       </div>
+      <button class="btn btn-primary" onclick="executeReconcile()" ${runBlocked ? "disabled" : ""}
+        title="${esc(isDemo ? "Switch to Live Data to run reconciliation" : latestBatch ? "Reconcile all purchase invoices against the latest GSTR-2B import: " + (latestBatch.file || "batch #" + latestBatch.id) : "Import a GSTR-2B statement first")}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        ${S.reconBusy ? "Running…" : "Run reconciliation"}
+      </button>
     </div>
 
     <!-- Filters Row -->
     <div class="filter-row">
       <div class="filter-field">
         <label>Tax period</label>
-        <select><option>July 2026</option><option>June 2026</option></select>
+        ${filterSelect("reconciliation", "period", "All periods", options.periods)}
       </div>
       <div class="filter-field">
         <label>GSTIN</label>
-        <select><option>All GSTINs</option></select>
+        ${filterSelect("reconciliation", "gstin", "All GSTINs", options.gstins)}
       </div>
       <div class="filter-field">
         <label>Supplier</label>
-        <select><option>All suppliers</option></select>
+        ${filterSelect("reconciliation", "supplier", "All suppliers", options.suppliers)}
       </div>
       <div class="filter-field">
         <label>Status</label>
-        <select><option>All statuses</option><option>Matched</option><option>Amount mismatch</option><option>Missing from 2B</option></select>
+        ${filterSelect("reconciliation", "status", "All statuses", options.statuses)}
       </div>
-      <button class="btn btn-primary" onclick="executeReconcile()" style="margin-left:8px">
+      <button class="btn btn-primary" onclick="applyFilters('reconciliation')" style="margin-left:8px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
         Apply filters
       </button>
       <div class="filter-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input placeholder="Search invoice no., supplier, or GSTIN..." value="${esc(S.search)}" oninput="S.search=this.value;render()">
+        <input placeholder="Search invoice no., supplier, or GSTIN..." value="${esc(S.search)}" data-focus-key="page-search" oninput="S.search=this.value;S.pages[S.view]=1;render()">
       </div>
     </div>
 
@@ -1867,11 +2056,11 @@ function renderReconciliation() {
             <th rowspan="2" style="width:40px">Actions</th>
           </tr>
           <tr>
-            <th class="right" style="border-left:1px solid var(--line)">Value (₹)</th>
+            <th class="right" style="border-left:1px solid var(--line)">Taxable (₹)</th>
             <th class="right" style="border-right:1px solid var(--line)">ITC (₹)</th>
-            <th class="right">Value (₹)</th>
+            <th class="right">Taxable (₹)</th>
             <th class="right" style="border-right:1px solid var(--line)">ITC (₹)</th>
-            <th class="right">Value (₹)</th>
+            <th class="right">Taxable (₹)</th>
             <th class="right" style="border-right:1px solid var(--line)">ITC (₹)</th>
           </tr>
         </thead>
@@ -1881,30 +2070,30 @@ function renderReconciliation() {
               <td><input type="checkbox"></td>
               <td><b>${esc(x.number)}</b></td>
               <td>${fmtDate(x.date)}</td>
-              <td>${esc(x.supplier)}</td>
+              <td class="wrap">${esc(x.supplier)}</td>
               <td style="font-family:monospace;font-size:12px">${esc(x.gstin)}</td>
-              <td class="right">${Number(x.reg_val).toLocaleString('en-IN')}</td>
-              <td class="right">${Number(x.reg_gst).toLocaleString('en-IN')}</td>
-              <td class="right">${Number(x.twob_val).toLocaleString('en-IN')}</td>
-              <td class="right">${Number(x.twob_gst).toLocaleString('en-IN')}</td>
-              <td class="right">${x.diff_val ? Number(x.diff_val).toLocaleString('en-IN') : "0"}</td>
-              <td class="right">${x.diff_gst ? Number(x.diff_gst).toLocaleString('en-IN') : "0"}</td>
+              <td class="right">${amountCell(x.reg_val)}</td>
+              <td class="right">${amountCell(x.reg_gst)}</td>
+              <td class="right">${amountCell(x.twob_val)}</td>
+              <td class="right">${amountCell(x.twob_gst)}</td>
+              <td class="right">${amountCell(x.diff_val)}</td>
+              <td class="right">${amountCell(x.diff_gst)}</td>
               <td>${getReconBadge(x.status)}</td>
               <td class="center"><button class="kebab-btn" onclick="openEvidenceModal(${x.id})">⋮</button></td>
             </tr>
-          `).join("") : `
+          `).join("") : list.length ? noFilterMatches(13, "reconciliation") : `
             <tr>
               <td colspan="13" style="text-align:center;padding:48px 24px;color:var(--muted)">
                 <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">No reconciliation results yet</div>
                 <div style="margin-bottom:16px">Upload your purchase register and GSTR-2B to run reconciliation matching.</div>
-                <button class="btn btn-primary" onclick="executeReconcile()">Run Reconciliation</button>
+                <button class="btn btn-primary" onclick="executeReconcile()" ${runBlocked ? "disabled" : ""}>Run reconciliation</button>
               </td>
             </tr>
           `}
         </tbody>
       </table>
       <div class="table-footer">
-        <div>Showing ${paged.start}–${paged.end} of ${totalCount} invoices</div>
+        <div>Showing ${paged.start}–${paged.end} of ${filtered.length} invoices${filtered.length !== totalCount ? ` (filtered from ${totalCount})` : ""}</div>
         ${renderPagination(paged.page, paged.pages, 'reconciliation')}
       </div>
     </div>
@@ -1919,22 +2108,13 @@ function renderFollowups() {
     drafts = BASELINE_FOLLOWUPS;
   } else {
     const rawDrafts = (S.data && (S.data.followups || S.data.drafts)) || [];
-    drafts = rawDrafts.map(d => ({
-      id: d.id,
-      supplier: d.supplier,
-      gstin: d.gstin,
-      count: d.invoices || 1,
-      issue: (d.reasons && d.reasons.length) ? d.reasons[0] : "Missing from 2B",
-      amount: d.gst || d.taxable || 0,
-      last: fmtDate(d.created),
-      next: fmtDate(d.updated || d.created),
-      status: d.status === "APPROVED" ? "In progress" : (d.status === "SKIPPED" ? "Resolved" : "Pending")
-    }));
+    drafts = rawDrafts.map(followupRowView);
   }
 
-  const filtered = filterList(drafts, ["supplier","gstin","issue","status"]);
+  const options = followupFilterOptions(drafts);
+  const filtered = filterList(applyFollowupFilters(drafts, S.filters.followups), ["supplier","gstin","issue","status"]);
   const totalCount = drafts.length;
-  const paged = paginate(filtered, S.pages.followups, 10, totalCount);
+  const paged = paginate(filtered, S.pages.followups, 10);
 
   return `
     <div class="page-header">
@@ -1942,25 +2122,33 @@ function renderFollowups() {
         <h1>Supplier Follow-ups</h1>
         <p>Track and manage follow-ups with suppliers for mismatched or missing invoices.</p>
       </div>
+      <button class="btn btn-primary" onclick="executeGenerateFollowups()" ${isDemo || !(S.data && S.data.reconciliation && S.data.reconciliation.latest) ? "disabled" : ""}
+        title="${isDemo ? "Switch to Live Data to prepare drafts" : "Prepare drafts for invoices missing from the latest GSTR-2B import. Nothing is sent."}">
+        Prepare drafts
+      </button>
     </div>
 
     <!-- Filters Row -->
     <div class="filter-row">
       <div class="filter-field">
         <label>Tax period</label>
-        <select><option>July 2026</option><option>June 2026</option></select>
+        ${filterSelect("followups", "period", "All periods", options.periods)}
       </div>
       <div class="filter-field">
         <label>Status</label>
-        <select><option>All statuses</option><option>Pending</option><option>In progress</option><option>Resolved</option></select>
+        ${filterSelect("followups", "status", "All statuses", options.statuses)}
       </div>
       <div class="filter-field">
         <label>Supplier</label>
-        <select><option>All suppliers</option></select>
+        ${filterSelect("followups", "supplier", "All suppliers", options.suppliers)}
       </div>
+      <button class="btn btn-primary" onclick="applyFilters('followups')" style="margin-left:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        Apply filters
+      </button>
       <div class="filter-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input placeholder="Search supplier, GSTIN, invoice no..." value="${esc(S.search)}" oninput="S.search=this.value;render()">
+        <input placeholder="Search supplier, GSTIN, invoice no..." value="${esc(S.search)}" data-focus-key="page-search" oninput="S.search=this.value;S.pages[S.view]=1;render()">
       </div>
     </div>
 
@@ -1988,14 +2176,14 @@ function renderFollowups() {
               <td><b>${esc(s.supplier)}</b></td>
               <td style="font-family:monospace;font-size:12px">${esc(s.gstin)}</td>
               <td class="center">${s.count}</td>
-              <td><span class="badge ${s.issue && s.issue.includes("Missing") ? "badge-missing" : "badge-mismatch"}">${esc(s.issue)}</span></td>
+              <td><span class="badge ${s.issue === "Missing from 2B" ? "badge-missing" : s.issue === "Amount mismatch" ? "badge-mismatch" : "badge-check"}">${esc(s.issue)}</span></td>
               <td class="right">${Number(s.amount).toLocaleString('en-IN')}</td>
               <td>${esc(s.last)}</td>
               <td>${esc(s.next)}</td>
-              <td><span class="badge ${s.status === "Pending" ? "badge-pending" : s.status === "Resolved" ? "badge-resolved" : "badge-progress"}">${esc(s.status)}</span></td>
+              <td><span class="badge ${followupBadgeClass(s.status)}">${esc(s.status)}</span></td>
               <td class="center"><button class="kebab-btn" onclick="openDraftModal(${s.id})">⋮</button></td>
             </tr>
-          `).join("") : `
+          `).join("") : drafts.length ? noFilterMatches(10, "followups") : `
             <tr>
               <td colspan="10" style="text-align:center;padding:48px 24px;color:var(--muted)">
                 <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">No supplier follow-ups pending</div>
@@ -2007,16 +2195,177 @@ function renderFollowups() {
         </tbody>
       </table>
       <div class="table-footer">
-        <div>Showing ${paged.start}–${paged.end} of ${totalCount} suppliers</div>
+        <div>Showing ${paged.start}–${paged.end} of ${filtered.length} suppliers${filtered.length !== totalCount ? ` (filtered from ${totalCount})` : ""}</div>
         ${renderPagination(paged.page, paged.pages, 'followups')}
       </div>
     </div>
   `;
 }
 
+// Supplier follow-up rows. The workflow status is derived on the server
+// from the stored draft status plus later-statement recovery evidence; it is
+// not the reconciliation status, and a skipped draft is never "Resolved".
+function followupStatusLabel(code) {
+  return ({
+    PENDING: "Pending",
+    NEEDS_REVIEW: "Needs review",
+    IN_PROGRESS: "In progress",
+    RESOLVED: "Resolved",
+    SKIPPED: "Skipped"
+  })[code] || "Unknown";
+}
+
+function issueLabel(issues) {
+  if (!issues || !issues.length) return "Not recorded";
+  return issues.map(reconStatusLabel).join(", ");
+}
+
+function followupBadgeClass(label) {
+  return ({
+    "Pending": "badge-pending",
+    "Needs review": "badge-check",
+    "In progress": "badge-progress",
+    "Resolved": "badge-resolved",
+    "Skipped": "badge-skipped"
+  })[label] || "badge-check";
+}
+
+function followupRowView(d) {
+  return {
+    id: d.id,
+    supplier: d.supplier,
+    gstin: d.gstin,
+    count: d.invoices || 0,
+    issue: issueLabel(d.issues),
+    amount: d.gst || 0,
+    last: fmtDate(d.last_followup),
+    next: fmtDate(d.next_followup),
+    status: followupStatusLabel(d.workflow_status),
+    draftStatus: d.status,
+    periods: d.periods || []
+  };
+}
+
+// ------------------- FILTERS (Reconciliation, Follow-ups) -------------------
+// Options are built from the rows on screen, so only real values appear.
+// Filtering is client-side and read-only; it never runs a reconciliation.
+function periodOf(row) {
+  return row.period || String(row.date || "").slice(0, 7);
+}
+
+function periodLabel(period) {
+  const m = /^(\d{4})-(\d{2})$/.exec(period || "");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return m ? `${months[Number(m[2]) - 1]} ${m[1]}` : String(period || "");
+}
+
+function uniqueOptions(values, label = v => v) {
+  return [...new Set(values.filter(Boolean))].sort().map(v => ({value: v, label: label(v)}));
+}
+
+function reconFilterOptions(list) {
+  const present = new Set(list.map(r => r.status));
+  return {
+    periods: uniqueOptions(list.map(periodOf), periodLabel).reverse(),
+    gstins: uniqueOptions(list.map(r => r.gstin).filter(g => g !== "—")),
+    suppliers: uniqueOptions(list.map(r => r.supplier).filter(v => v !== "—")),
+    statuses: ["MATCHED","AMOUNT_MISMATCH","MISSING_FROM_2B","NEEDS_REVIEW",
+               "NOT_ELIGIBLE","ITC_UNAVAILABLE","IN_2B_NOT_IN_BOOKS"]
+      .filter(code => present.has(code))
+      .map(code => ({value: code, label: reconStatusLabel(code)}))
+  };
+}
+
+function applyReconFilters(list, f) {
+  f = f || {};
+  return list.filter(r =>
+    (!f.period || periodOf(r) === f.period) &&
+    (!f.gstin || r.gstin === f.gstin) &&
+    (!f.supplier || r.supplier === f.supplier) &&
+    (!f.status || r.status === f.status));
+}
+
+function followupFilterOptions(list) {
+  return {
+    periods: uniqueOptions(list.flatMap(d => d.periods || []), periodLabel).reverse(),
+    suppliers: uniqueOptions(list.map(d => d.supplier)),
+    statuses: ["Pending","Needs review","In progress","Resolved","Skipped"]
+      .map(v => ({value: v, label: v}))
+  };
+}
+
+function applyFollowupFilters(list, f) {
+  f = f || {};
+  return list.filter(d =>
+    (!f.period || (d.periods || []).includes(f.period)) &&
+    (!f.supplier || d.supplier === f.supplier) &&
+    (!f.status || d.status === f.status));
+}
+
+function filterSelect(page, key, allLabel, options) {
+  const current = S.filterDraft[page][key] || "";
+  // Keep a selected value visible even if new data no longer contains it.
+  const opts = options.some(o => o.value === current) || !current
+    ? options : [...options, {value: current, label: periodLabel(current)}];
+  return `<select onchange="S.filterDraft['${page}']['${key}']=this.value">
+    <option value="">${esc(allLabel)}</option>
+    ${opts.map(o => `<option value="${esc(o.value)}" ${o.value === current ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+  </select>`;
+}
+
+function applyFilters(page) {
+  S.filters[page] = {...S.filterDraft[page]};
+  S.pages[page] = 1;
+  render();
+}
+
+function clearFilters(page) {
+  S.filters[page] = {};
+  S.filterDraft[page] = {};
+  S.pages[page] = 1;
+  render();
+}
+
+function noFilterMatches(colspan, page) {
+  return `
+    <tr>
+      <td colspan="${colspan}" style="text-align:center;padding:48px 24px;color:var(--muted)">
+        <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">No records match these filters</div>
+        <button class="btn btn-secondary" onclick="clearFilters('${page}')">Clear filters</button>
+      </td>
+    </tr>`;
+}
+
 // ------------------- PAGE 6: SETTINGS -------------------
+function orgField(id, key, label, placeholder) {
+  const error = (S.orgErrors || {})[key];
+  return `
+    <div class="form-group">
+      <label for="${id}">${label}</label>
+      <input class="form-input ${error ? "invalid" : ""}" id="${id}" value="${esc(S.org[key] || "")}" placeholder="${esc(placeholder)}">
+      ${error ? `<div class="field-error">${esc(error)}</div>` : ""}
+    </div>`;
+}
+
 function renderSettings() {
-  const o = S.org;
+  const wa = S.whatsapp;
+  let waText = "Checking WhatsApp status…";
+  if (wa) {
+    const web = wa.web;
+    const webText = !web || !web.config.enabled
+      ? "WhatsApp Web bridge off"
+      : web.status.ready
+        ? `WhatsApp Web linked as ${web.status.phone_masked || "a masked number"}`
+        : web.status.reachable
+          ? (web.status.qr_available ? "WhatsApp Web waiting for a QR scan" : `WhatsApp Web: ${web.status.status}`)
+          : "WhatsApp Web bridge not running";
+    const cloudText = wa.cloud
+      ? (wa.cloud.status === "ok" ? "Cloud API delivery configured" : "Cloud API delivery off (mock delivery only)")
+      : "Cloud API status unavailable";
+    waText = `${webText} · ${cloudText}`;
+  }
+  const webReady = !!(wa && wa.web && wa.web.status.ready);
+  const webQr = !!(wa && wa.web && wa.web.status.qr_available);
   return `
     <div class="page-header">
       <div class="page-title">
@@ -2026,77 +2375,73 @@ function renderSettings() {
     </div>
 
     <div class="settings-grid">
-      <!-- Organization Details -->
       <div class="card">
         <div class="card-header-row">
           <div>
             <h3>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="15" y2="14"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1"/></svg>
               Organization Details
             </h3>
             <p>Set your company information for ITC reconciliation.</p>
           </div>
         </div>
-
         <form id="org-form" onsubmit="event.preventDefault();saveOrgDetails()">
-          <div class="form-group">
-            <label>Company Name</label>
-            <input class="form-input" id="org-name" value="${esc(o.company_name)}">
-          </div>
-          <div class="form-group">
-            <label>GSTIN</label>
-            <input class="form-input" id="org-gstin" value="${esc(o.gstin)}">
-          </div>
-          <div class="form-group">
-            <label>Email</label>
-            <input class="form-input" id="org-email" value="${esc(o.email)}">
-          </div>
-          <div class="form-group">
-            <label>Phone Number</label>
-            <input class="form-input" id="org-phone" value="${esc(o.phone)}">
-          </div>
+          ${orgField("org-name", "company_name", "Company Name", "e.g. Acme Traders Pvt Ltd")}
+          ${orgField("org-gstin", "gstin", "GSTIN", "15-character GSTIN")}
+          ${orgField("org-email", "email", "Email", "accounts@yourcompany.com")}
+          ${orgField("org-phone", "phone", "Phone Number", "+91 98765 43210")}
           <button type="submit" class="btn btn-primary" style="margin-top:10px">Save Changes</button>
         </form>
       </div>
 
-      <!-- Data Management -->
       <div class="card">
         <div class="card-header-row">
           <div>
             <h3>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
               Data Management
             </h3>
             <p>Manage your data and files.</p>
           </div>
         </div>
-
         <div style="margin-top:6px">
           <div class="data-row">
             <div class="data-row-left">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
               <div>
                 <b>Purchase Invoices</b>
-                <small>Upload purchase invoices (PDF/Excel).</small>
+                <small>Upload purchase invoices (CSV/Excel).</small>
               </div>
             </div>
             <button class="btn btn-outline-purple" onclick="openUploadModal('invoices')">Upload Invoices</button>
           </div>
-
           <div class="data-row">
             <div class="data-row-left">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 8z"/><path d="M12 11v7M9 14l3-3 3 3"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 8z"/><path d="M12 11v7M9 14l3-3 3 3"/></svg>
               <div>
                 <b>GSTR-2B</b>
-                <small>Upload GSTR-2B JSON file.</small>
+                <small>Upload GSTR-2B JSON or Excel file.</small>
               </div>
             </div>
             <button class="btn btn-outline-purple" onclick="openUploadModal('gstr2b')">Upload GSTR-2B</button>
           </div>
-
           <div class="data-row">
             <div class="data-row-left">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5z"/></svg>
+              <div>
+                <b>WhatsApp</b>
+                <small id="wa-status-text">${esc(waText)}</small>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px">
+              ${webQr ? `<button class="btn btn-outline-purple" onclick="openWhatsAppQr()">Link device</button>` : ""}
+              ${webReady ? `<button class="btn btn-outline-purple" onclick="openWhatsAppTestSend()">Send test message</button>` : ""}
+              <button class="btn btn-secondary" onclick="loadWhatsAppStatus(true)">Refresh</button>
+            </div>
+          </div>
+          <div class="data-row">
+            <div class="data-row-left">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
               <div>
                 <b>Clear Data</b>
                 <small>Remove all uploaded invoices and GSTR-2B data.</small>
@@ -2110,6 +2455,72 @@ function renderSettings() {
   `;
 }
 
+async function loadWhatsAppStatus(announce = false) {
+  try {
+    const [web, health] = await Promise.all([api("/api/whatsapp/status"), api("/api/health")]);
+    const cloud = (health.checks || []).find(c => c.key === "whatsapp_cloud") || null;
+    S.whatsapp = {web, cloud};
+    if (announce) toast("WhatsApp status refreshed.");
+  } catch (e) {
+    S.whatsapp = null;
+    toast(`Could not read WhatsApp status: ${e.message}`, "bad");
+  }
+  if (S.view === "settings") render();
+}
+
+async function openWhatsAppQr() {
+  try {
+    const q = await api("/api/whatsapp/qr");
+    $("#draft-modal-content").innerHTML = `
+      <div class="modal-head">
+        <div><h2>Link WhatsApp test device</h2><p>WhatsApp → Linked devices → Link a device, then scan.</p></div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      ${q.qr ? `<img src="${esc(q.qr)}" alt="WhatsApp link QR code" style="display:block;margin:0 auto;width:260px;height:260px">`
+             : `<p style="color:var(--muted)">No QR code is available (status: ${esc(q.status || "unknown")}).</p>`}
+      <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn btn-secondary" onclick="closeModal();loadWhatsAppStatus()">Done</button></div>`;
+    $("#draft-modal").classList.remove("hide");
+  } catch (e) {
+    toast(`Could not load the QR code: ${e.message}`, "bad");
+  }
+}
+
+function openWhatsAppTestSend() {
+  const web = S.whatsapp && S.whatsapp.web;
+  const recipient = web && web.config ? web.config.test_recipient_masked : null;
+  $("#draft-modal-content").innerHTML = `
+    <div class="modal-head">
+      <div><h2>Send WhatsApp test message</h2><p>Sends one fixed test message to the configured test number ${esc(recipient || "")}. Suppliers are never messaged.</p></div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <label class="check-line"><input type="checkbox" id="wa-optin"> The test number has agreed to receive this message.</label>
+    <label class="check-line"><input type="checkbox" id="wa-confirm"> Send exactly one test message now.</label>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="wa-send-btn" onclick="sendWhatsAppTest()">Send test message</button>
+    </div>`;
+  $("#draft-modal").classList.remove("hide");
+}
+
+async function sendWhatsAppTest() {
+  const optIn = $("#wa-optin").checked, confirmSend = $("#wa-confirm").checked;
+  if (!optIn || !confirmSend) { toast("Tick both confirmations first. Nothing was sent.", "bad"); return; }
+  const btn = $("#wa-send-btn");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/whatsapp/demo-send", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({confirm_send: true, opt_in_confirmed: true})});
+    closeModal();
+    const accepted = r.outcome === "ACCEPTED";
+    toast(accepted
+      ? "Test message accepted by WhatsApp Web (not a delivery confirmation)."
+      : `Test message not sent: ${r.error_code || r.outcome}`, accepted ? "ok" : "bad");
+  } catch (e) {
+    btn.disabled = false;
+    toast(`Test message not sent: ${e.message}`, "bad");
+  }
+}
+
 // ------------------- HELPERS & MODALS -------------------
 function getBadge(status) {
   if (status === "valid") return `<span class="badge badge-valid">Valid</span>`;
@@ -2117,10 +2528,56 @@ function getBadge(status) {
   return `<span class="badge badge-check">Check required</span>`;
 }
 
+// Reconciliation rows: every value comes from the stored invoice and the
+// stored GSTR-2B row. A side without a 2B row stays null ("—"); nothing is
+// estimated. Differences are signed invoice minus GSTR-2B, as computed by
+// the engine whose status is shown alongside.
+function reconRowView(x) {
+  return {
+    id: x.id,
+    number: x.number || "",
+    date: x.date || null,
+    supplier: x.supplier || "—",
+    gstin: x.gstin || "—",
+    period: x.period || null,
+    reg_val: x.invoice_taxable ?? null,
+    reg_gst: x.invoice_gst ?? null,
+    twob_val: x.twob_taxable ?? null,
+    twob_gst: x.twob_gst ?? null,
+    diff_val: x.taxable_difference ?? null,
+    diff_gst: x.difference ?? null,
+    status: x.status,
+    reasons: x.reasons || []
+  };
+}
+
+function reconStatusLabel(status) {
+  return ({
+    MATCHED: "Matched",
+    AMOUNT_MISMATCH: "Amount mismatch",
+    MISSING_FROM_2B: "Missing from 2B",
+    NEEDS_REVIEW: "Needs review",
+    NOT_ELIGIBLE: "Not eligible",
+    ITC_UNAVAILABLE: "ITC unavailable",
+    IN_2B_NOT_IN_BOOKS: "In 2B, not in books"
+  })[status] || String(status || "Unknown");
+}
+
 function getReconBadge(status) {
-  if (status === "MATCHED") return `<span class="badge badge-matched">Matched</span>`;
-  if (status === "MISSING_FROM_2B") return `<span class="badge badge-missing">Missing from 2B</span>`;
-  return `<span class="badge badge-mismatch">Amount mismatch</span>`;
+  const cls = ({
+    MATCHED: "badge-matched",
+    AMOUNT_MISMATCH: "badge-mismatch",
+    MISSING_FROM_2B: "badge-missing",
+    NEEDS_REVIEW: "badge-check",
+    NOT_ELIGIBLE: "badge-skipped",
+    ITC_UNAVAILABLE: "badge-invalid",
+    IN_2B_NOT_IN_BOOKS: "badge-progress"
+  })[status] || "badge-check";
+  return `<span class="badge ${cls}">${esc(reconStatusLabel(status))}</span>`;
+}
+
+function amountCell(v) {
+  return v === null || v === undefined ? "—" : Number(v).toLocaleString('en-IN');
 }
 
 function filterList(items, fields) {
@@ -2163,11 +2620,10 @@ function renderPagination(current, total, key) {
 function openUploadModal(kind="invoices") {
   S.uploadKind = kind;
   S.selectedFile = null;
+  S.uploadPreview = null;
+  S.uploadBusy = false;
   const modal = $("#upload-modal");
   const title = $("#modal-upload-title");
-  const btn = $("#modal-upload-btn");
-  const info = $("#modal-file-info");
-  const preview = $("#modal-preview-box");
   const input = $("#modal-file-input");
 
   if (kind === "gstr2b") {
@@ -2175,12 +2631,71 @@ function openUploadModal(kind="invoices") {
     input.accept = ".json,.csv,.xlsx";
   } else {
     title.textContent = "Upload Purchase Invoices";
-    input.accept = ".csv,.xlsx,.json";
+    input.accept = ".csv,.xlsx";
   }
-  info.textContent = "";
-  preview.innerHTML = "";
-  btn.disabled = true;
+  $("#modal-template-link").classList.toggle("hide", kind === "gstr2b");
+  input.value = "";
+  $("#modal-file-info").textContent = "";
+  $("#modal-preview-box").innerHTML = "";
+  setUploadButton(false, "Import Now");
   modal.classList.remove("hide");
+}
+
+function setUploadButton(enabled, label) {
+  const btn = $("#modal-upload-btn");
+  btn.disabled = !enabled;
+  if (label) btn.textContent = label;
+}
+
+function showUploadNotice(kind, html) {
+  $("#modal-preview-box").innerHTML = `<div class="upload-notice ${kind}">${html}</div>`;
+}
+
+function rowErrorList(rejected) {
+  const items = rejected.slice(0, 5).map(r => {
+    const first = (r.errors && r.errors[0]) ? r.errors[0].message : "Row is invalid.";
+    return `<li>Row ${esc(r.row)}${r.invoice ? " (" + esc(r.invoice) + ")" : ""}: ${esc(first)}</li>`;
+  }).join("");
+  const more = rejected.length > 5 ? `<li>…and ${rejected.length - 5} more</li>` : "";
+  return `<ul>${items}${more}</ul>`;
+}
+
+// Validate the chosen file with the read-only preview endpoint. Problems are
+// shown once, inside the dialog; nothing is written until "Import Now".
+async function selectUploadFile(file) {
+  if (!file) return;
+  S.selectedFile = file;
+  S.uploadPreview = null;
+  $("#modal-file-info").textContent = "Selected: " + file.name;
+  setUploadButton(false, "Checking…");
+  showUploadNotice("warn", "Checking the file…");
+  const fd = new FormData();
+  fd.append("file", file);
+  const endpoint = S.uploadKind === "gstr2b" ? "/api/gstr2b/preview" : "/api/invoices/preview";
+  try {
+    const p = await api(endpoint, {method:"POST", body:fd});
+    if (S.selectedFile !== file) return;  // a newer file was chosen meanwhile
+    S.uploadPreview = p;
+    const rejected = p.rejected || [];
+    const dupes = p.duplicates || [];
+    if (dupes.length) {
+      showUploadNotice("bad", `This exact GSTR-2B file was already imported (batch #${esc(dupes[0].id)}). Nothing will be imported again.`);
+      setUploadButton(false, "Import Now");
+    } else if (!p.accepted) {
+      showUploadNotice("bad", `<b>No valid rows — nothing can be imported.</b> ${p.total} row(s) checked.${rowErrorList(rejected)}`);
+      setUploadButton(false, "Import Now");
+    } else if (rejected.length) {
+      showUploadNotice("warn", `<b>${p.accepted} of ${p.total} row(s) are valid.</b> The ${rejected.length} invalid row(s) below will be rejected and not imported.${rowErrorList(rejected)}`);
+      setUploadButton(true, `Import ${p.accepted} valid row(s)`);
+    } else {
+      showUploadNotice("ok", `<b>All ${p.total} row(s) are valid</b> and ready to import.`);
+      setUploadButton(true, "Import Now");
+    }
+  } catch(e) {
+    if (S.selectedFile !== file) return;
+    showUploadNotice("bad", `<b>This file cannot be imported.</b> ${esc(e.message)}`);
+    setUploadButton(false, "Import Now");
+  }
 }
 
 function closeModal() {
@@ -2198,30 +2713,41 @@ function closeConfirmModal() {
 
 // Modal Upload Logic
 async function executeModalUpload() {
-  if (!S.selectedFile) return;
+  if (!S.selectedFile || !S.uploadPreview || S.uploadBusy) return;
+  S.uploadBusy = true;
+  setUploadButton(false, "Importing…");
   const fd = new FormData();
   fd.append("file", S.selectedFile);
-
-  const endpoint = S.uploadKind === "gstr2b" ? "/api/gstr2b/import" : "/api/invoices/import";
+  const isGst = S.uploadKind === "gstr2b";
   try {
-    const res = await api(endpoint, {method:"POST", body:fd});
+    const res = await api(isGst ? "/api/gstr2b/import" : "/api/invoices/import", {method:"POST", body:fd});
     closeModal();
-    toast(`Successfully imported ${res.imported || res.accepted_rows || 'records'}!`);
+    if (isGst) {
+      toast(`GSTR-2B imported: ${res.accepted_rows} row(s) accepted, ${res.rejected_rows} rejected.`);
+    } else {
+      const parts = [`${res.imported} invoice(s) imported`];
+      if (res.duplicates) parts.push(`${res.duplicates} already existed`);
+      if (res.rejected) parts.push(`${res.rejected} invalid row(s) rejected`);
+      toast(parts.join(" · "), res.imported ? "ok" : "bad");
+    }
     await loadState();
   } catch(e) {
-    toast(e.message, "bad");
+    showUploadNotice("bad", `<b>Import failed.</b> ${esc(e.message)}`);
+    setUploadButton(false, "Import Now");
+  } finally {
+    S.uploadBusy = false;
   }
 }
 
 // Clear Data
 async function executeClearData() {
   try {
-    await api("/api/data/clear", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({confirm:true})});
+    const r = await api("/api/data/clear", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({confirm:true})});
     closeConfirmModal();
-    toast("All data cleared successfully.");
+    toast(`All data cleared. Backup saved: ${String(r.backup || "").split("/").pop()}`);
     await loadState();
   } catch(e) {
-    toast(e.message, "bad");
+    toast(`Nothing was deleted: ${e.message}`, "bad");
   }
 }
 
@@ -2239,41 +2765,59 @@ async function saveOrgDetails() {
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(payload)
     });
-    if (r.organization) S.org = r.organization;
+    S.org = r.organization;
+    S.orgErrors = {};
     toast("Organization details saved.");
   } catch(e) {
+    S.org = {...S.org, ...payload};
+    S.orgErrors = (e.body && e.body.fields) || {};
     toast(e.message, "bad");
   }
+  render();
 }
 
 // Reconcile
 async function executeReconcile() {
+  if (S.reconBusy) return;
+  if (S.demoMode) { toast("Switch to Live Data to run reconciliation.", "bad"); return; }
   const batches = (S.data && S.data.gstr2b && S.data.gstr2b.imports) || [];
-  const batchId = batches[0] ? batches[0].id : 1;
+  if (!batches.length) { toast("Import a GSTR-2B statement before running reconciliation.", "bad"); return; }
+  const batchId = batches[0].id;
+  S.reconBusy = true;
+  render();
   try {
     const r = await api("/api/reconciliations", {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({batch_id: batchId, tolerance: 0})
     });
-    toast(`Reconciliation completed: ${r.matched_count} matched, ${r.missing_count} missing.`);
+    toast(`Reconciliation completed: ${r.matched_count} matched, ${r.amount_mismatch_count} amount mismatch, ${r.missing_count} missing, ${r.needs_review_count} need review.`);
     await loadState();
   } catch(e) {
-    toast("Reconciliation completed.", "ok");
+    toast(`Reconciliation did not run: ${e.message}`, "bad");
+  } finally {
+    S.reconBusy = false;
+    render();
   }
 }
 
 // Generate Followups
 async function executeGenerateFollowups() {
-  const batches = (S.data && S.data.gstr2b && S.data.gstr2b.imports) || [];
-  const batchId = batches[0] ? batches[0].id : 1;
+  if (S.demoMode) { toast("Switch to Live Data to generate follow-up drafts.", "bad"); return; }
+  // Drafts come from the evidence of the latest reconciliation run, so use
+  // that run's GSTR-2B batch (not simply the newest import).
+  const latestRun = S.data && S.data.reconciliation && S.data.reconciliation.latest;
+  if (!latestRun) { toast("Run reconciliation before preparing follow-up drafts.", "bad"); return; }
+  const batchId = latestRun.batch;
   try {
     const r = await api("/api/followups/generate", {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({batch_id: batchId})
     });
-    toast(`${r.created_drafts || 2} follow-up drafts prepared.`);
+    toast(r.created_drafts
+      ? `${r.created_drafts} follow-up draft(s) prepared.`
+      : `No new follow-up drafts: ${r.existing_drafts} already exist for ${r.eligible_invoices} eligible invoice(s).`);
     await loadState();
   } catch(e) {
     toast(e.message, "bad");
@@ -2287,64 +2831,158 @@ async function openDraftModal(id) {
     S.activeDraft = d;
     renderDraftModalContent(d);
   } catch(e) {
-    renderDraftModalContent({
-      draft: {
-        id: id,
-        supplier_name: "Agarwal Cement",
-        supplier_gstin: "27JKLMN9012P1Z3",
-        contact_phone: "+91 98765 00000",
-        status: "DRAFT",
-        draft_text: "Dear Agarwal Cement, our GSTR-2B reconciliation for July 2026 shows pending invoices. Please verify whether these were reported in your GSTR-1."
-      },
-      invoices: [
-        {"Invoice number": "AC-4410", Date: "2026-07-07", "Tax period": "2026-07", "Taxable (Rs)": "56,000", "GST (Rs)": "10,080", Reason: "MISSING_FROM_2B"}
-      ]
-    });
+    toast(`Could not open this follow-up: ${e.message}`, "bad");
   }
 }
 
 function renderDraftModalContent(d) {
+  S.activeDraft = d;
   const x = d.draft;
-  const modal = $("#draft-modal");
-  const content = $("#draft-modal-content");
-  content.innerHTML = `
+  const editable = x.status === "DRAFT" || x.status === "NEEDS_REVIEW";
+  const cloudReady = !!(S.data && S.data.provider && S.data.provider.cloud);
+  const laterBatches = (d.batches || []).filter(b => b.id !== x.gstr2b_import_id);
+  const problems = d.approval_problems || [];
+  const recovery = d.recovery || {};
+  const invoiceRows = (d.invoices || []).map(i => `
+    <tr><td>${esc(i["Invoice number"])}</td><td>${esc(fmtDate(i.Date))}</td><td>${esc(periodLabel(i["Tax period"]))}</td>
+        <td class="right">${esc(i["Taxable (Rs)"])}</td><td class="right">${esc(i["GST (Rs)"])}</td>
+        <td>${getReconBadge(String(i.Reason || "").split(":")[0])}</td></tr>`).join("");
+  const deliveries = (d.deliveries || []).map(v => `
+    <li>${esc(v.provider === "mock" ? "Simulation" : "Cloud API")} · ${esc(v.status)} · ${esc(fmtDate(v.sent_at || v.created))}${v.error ? ` · ${esc(v.error)}` : ""}</li>`).join("");
+  const events = (d.events || []).slice(-5).reverse().map(ev => `
+    <li>${esc(ev.At || ev.at || "")} · ${esc(ev.Event || ev.event || "")}${ev.Note || ev.note ? ` · ${esc(ev.Note || ev.note)}` : ""}</li>`).join("");
+
+  let actions = "";
+  if (x.status === "DRAFT") {
+    actions = `
+      <label class="check-line"><input type="checkbox" id="draft-approve-check"> I reviewed this message. Approving it sends nothing.</label>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="skipDraft(${x.id})">Skip</button>
+        <button class="btn btn-secondary" onclick="saveDraftText(${x.id})">Save text</button>
+        <button class="btn btn-primary" onclick="approveActiveDraft(${x.id})" ${problems.length ? "disabled" : ""}>Approve Draft</button>
+      </div>`;
+  } else if (x.status === "NEEDS_REVIEW") {
+    actions = `<div class="modal-actions">
+        <button class="btn btn-secondary" onclick="skipDraft(${x.id})">Skip</button>
+        <button class="btn btn-secondary" onclick="saveDraftText(${x.id})">Save text</button>
+      </div>`;
+  } else if (x.status === "APPROVED") {
+    actions = `
+      <div class="modal-section">
+        <b>Delivery</b>
+        <p class="muted-note">${cloudReady
+          ? "WhatsApp Cloud API delivery is configured."
+          : "Live WhatsApp delivery is off (WHATSAPP_ENABLED is not set). Only a simulated send is available."}</p>
+        <label class="check-line"><input type="checkbox" id="send-optin"> The supplier has agreed to receive WhatsApp messages.</label>
+        <label class="check-line"><input type="checkbox" id="send-confirm"> Send the approved message exactly as shown.</label>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="sendDraft(${x.id}, 'mock')">Simulate send</button>
+          ${cloudReady ? `<button class="btn btn-primary" onclick="sendDraft(${x.id}, 'live')">Send via WhatsApp</button>` : ""}
+        </div>
+      </div>
+      <div class="modal-section">
+        <b>Check a later GSTR-2B statement</b>
+        <p class="muted-note">Resolved only when every invoice appears in one later GSTR-2B import with the same GST.</p>
+        ${laterBatches.length ? `
+          <div class="modal-actions" style="justify-content:flex-start">
+            <select id="verify-batch" class="filter-select">${laterBatches.map(b => `<option value="${esc(b.id)}">#${esc(b.id)} · ${esc(b["File"] || b.file_name || b.file || "")}</option>`).join("")}</select>
+            <button class="btn btn-secondary" onclick="verifyDraft(${x.id})">Check statement</button>
+            <button class="btn btn-secondary" onclick="skipDraft(${x.id})">Close follow-up</button>
+          </div>` : `<p class="muted-note">Import a later GSTR-2B statement to check it.</p>`}
+      </div>`;
+  } else {
+    actions = `<p class="muted-note">This follow-up was skipped. Nothing was sent.</p>`;
+  }
+
+  $("#draft-modal-content").innerHTML = `
     <div class="modal-head">
       <div>
-        <h2>Draft #${x.id} · ${esc(x.supplier_name)}</h2>
-        <p>${esc(x.supplier_gstin)} · ${esc(x.contact_phone)}</p>
+        <h2>Draft #${esc(x.id)} · ${esc(x.supplier_name)}</h2>
+        <p>${esc(x.supplier_gstin || "—")} · ${esc(x.contact_phone || "No WhatsApp number")}</p>
       </div>
       <button class="modal-close" onclick="closeModal()">×</button>
     </div>
-    <div style="margin-bottom:16px">
-      <label style="font-weight:600;font-size:12.5px;color:var(--ink-secondary);display:block;margin-bottom:6px">Follow-up Message Text</label>
-      <textarea id="draft-text-box" style="width:100%;height:120px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:sans-serif;font-size:13px">${esc(x.draft_text)}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <span class="badge ${x.status === 'APPROVED' ? 'badge-matched' : x.status === 'SKIPPED' ? 'badge-skipped' : 'badge-progress'}">Draft: ${esc(x.status)}</span>
+      <span class="badge badge-check">Recovery evidence: ${esc(recovery.status || "—")}</span>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;border-top:1px solid var(--line-light);padding-top:14px">
-      <div><span class="badge ${x.status === 'APPROVED' ? 'badge-matched' : 'badge-progress'}">${esc(x.status)}</span></div>
-      <div style="display:flex;gap:10px">
-        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
-        <button class="btn btn-primary" onclick="approveActiveDraft(${x.id})">Approve Draft</button>
-      </div>
-    </div>
+    <table class="data-table" style="margin-bottom:12px">
+      <thead><tr><th>Invoice</th><th>Date</th><th>Period</th><th class="right">Taxable (₹)</th><th class="right">GST (₹)</th><th>Issue</th></tr></thead>
+      <tbody>${invoiceRows || '<tr><td colspan="6">No invoices</td></tr>'}</tbody>
+    </table>
+    <label style="font-weight:600;font-size:12.5px;color:var(--ink-secondary);display:block;margin-bottom:6px">Follow-up Message Text</label>
+    <textarea id="draft-text-box" ${editable ? "" : "readonly"} style="width:100%;height:120px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:inherit;font-size:13px">${esc(x.status === "APPROVED" ? (x.approved_text || x.draft_text) : x.draft_text)}</textarea>
+    ${problems.length ? `<div class="upload-notice warn" style="margin-top:10px"><b>Cannot be approved yet:</b><ul>${problems.map(pb => `<li>${esc(pb)}</li>`).join("")}</ul></div>` : ""}
+    <div style="margin-top:14px">${actions}</div>
+    ${deliveries ? `<div class="modal-section"><b>Deliveries</b><ul class="plain-list">${deliveries}</ul></div>` : ""}
+    ${events ? `<div class="modal-section"><b>History</b><ul class="plain-list">${events}</ul></div>` : ""}
   `;
-  modal.classList.remove("hide");
+  $("#draft-modal").classList.remove("hide");
 }
 
-async function approveActiveDraft(id) {
+async function draftAction(id, request, success) {
   try {
-    await api(`/api/followups/${id}/approve`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({confirmed:true})});
-    toast("Draft approved successfully.");
-    closeModal();
+    const r = await request();
+    toast(success);
     await loadState();
-  } catch(e) {
-    toast("Draft approved.", "ok");
-    closeModal();
+    const detail = r && r.draft ? r : (r && r.detail ? r.detail : await api(`/api/followups/${id}`));
+    renderDraftModalContent(detail);
+  } catch (e) {
+    toast(e.message, "bad");
   }
 }
 
+function saveDraftText(id) {
+  const text = $("#draft-text-box").value;
+  return draftAction(id, () => api(`/api/followups/${id}`, {method: "PATCH",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({draft_text: text})}),
+    "Draft text saved. Nothing was sent.");
+}
+
+async function approveActiveDraft(id) {
+  const check = $("#draft-approve-check");
+  if (!check || !check.checked) { toast("Confirm that you reviewed the message first. Nothing was approved.", "bad"); return; }
+  const box = $("#draft-text-box");
+  const current = S.activeDraft && S.activeDraft.draft ? S.activeDraft.draft.draft_text : null;
+  if (box && current !== null && box.value !== current) {
+    toast("Save the edited text before approving. Nothing was approved.", "bad");
+    return;
+  }
+  return draftAction(id, () => api(`/api/followups/${id}/approve`, {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirmed: true})}),
+    "Draft approved. Nothing was sent.");
+}
+
+function skipDraft(id) {
+  return draftAction(id, () => api(`/api/followups/${id}/skip`, {method: "POST"}),
+    "Follow-up skipped. Nothing was sent.");
+}
+
+function sendDraft(id, mode) {
+  const optIn = $("#send-optin").checked, confirmSend = $("#send-confirm").checked;
+  if (!optIn || !confirmSend) { toast("Tick both confirmations first. Nothing was sent.", "bad"); return; }
+  return draftAction(id, () => api(`/api/followups/${id}/send`, {method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({mode, confirm_send: true, opt_in_confirmed: true})}),
+    mode === "mock" ? "Simulated send recorded. No WhatsApp message was sent." : "Message handed to WhatsApp Cloud API.");
+}
+
+function verifyDraft(id) {
+  const later = Number($("#verify-batch").value);
+  return draftAction(id, () => api(`/api/followups/${id}/verify`, {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({later_batch_id: later})}),
+    "Later GSTR-2B statement checked.");
+}
+
 function openEvidenceModal(id) {
-  const list = S.demoMode ? BASELINE_RECON : ((S.data && S.data.reconciliation && S.data.reconciliation.results) || BASELINE_RECON);
-  const item = list.find(x => x.id === id) || list[0] || BASELINE_RECON[0];
+  const list = S.demoMode
+    ? BASELINE_RECON
+    : ((S.data && S.data.reconciliation && S.data.reconciliation.results) || []).map(reconRowView);
+  const item = list.find(x => x.id === id);
+  if (!item) {
+    toast("This reconciliation record is no longer available. Refresh the page.", "bad");
+    return;
+  }
   const modal = $("#draft-modal");
   const content = $("#draft-modal-content");
   content.innerHTML = `
@@ -2358,17 +2996,18 @@ function openEvidenceModal(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div style="background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:14px">
         <h4 style="margin:0 0 10px;font-size:12px;text-transform:uppercase;color:var(--muted)">Purchase Register</h4>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Value:</span><b>${inr(item.reg_val || item.total)}</b></div>
-        <div style="display:flex;justify-content:space-between"><span>ITC:</span><b>${inr(item.reg_gst || item.gst)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Taxable value:</span><b>${inr(item.reg_val)}</b></div>
+        <div style="display:flex;justify-content:space-between"><span>ITC:</span><b>${inr(item.reg_gst)}</b></div>
       </div>
       <div style="background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:14px">
         <h4 style="margin:0 0 10px;font-size:12px;text-transform:uppercase;color:var(--muted)">GSTR-2B</h4>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Value:</span><b>${inr(item.twob_val)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Taxable value:</span><b>${inr(item.twob_val)}</b></div>
         <div style="display:flex;justify-content:space-between"><span>ITC:</span><b>${inr(item.twob_gst)}</b></div>
       </div>
     </div>
     <div style="background:#fffbeb;border:1px solid #fef3c7;border-radius:8px;padding:12px;font-size:12.5px;color:#92400e">
-      <b>Status:</b> ${esc(item.status)} · Difference: ${inr(item.diff_gst || item.difference || 0)} ITC
+      <b>Status:</b> ${esc(reconStatusLabel(item.status))} · Taxable difference: ${inr(item.diff_val)} · ITC difference: ${inr(item.diff_gst)}
+      ${(item.reasons && item.reasons.length) ? `<div style="margin-top:6px">Reasons: ${item.reasons.map(esc).join(", ")}</div>` : ""}
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px">
       <a class="btn btn-outline-purple" href="/api/export/reconciliation.xlsx" title="Download accountant workbook">Download accountant workbook</a>
@@ -2379,92 +3018,74 @@ function openEvidenceModal(id) {
 }
 
 // SVG Dynamic Renderers
-function buildLiveMonthlyTrend(invs) {
-  if (!invs || !invs.length) {
-    return [
-      {m:"Feb 2026", v:0}, {m:"Mar 2026", v:0}, {m:"Apr 2026", v:0},
-      {m:"May 2026", v:0}, {m:"Jun 2026", v:0}, {m:"Jul 2026", v:0}
-    ];
-  }
+function buildLiveMonthlyTrend(invs, metric) {
   const byMonth = {};
-  invs.forEach(i => {
-    const d = i.date || i.invoice_date || "";
-    const m = d.slice(0,7);
-    if (m) byMonth[m] = (byMonth[m] || 0) + (i.gst || 0);
+  (invs || []).forEach(i => {
+    const month = String(i.date || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) return;
+    const value = metric === "total" ? Number(i.total) || 0 : (i.validation === "valid" ? Number(i.gst) || 0 : 0);
+    byMonth[month] = (byMonth[month] || 0) + value;
   });
-  const months = Object.keys(byMonth).sort();
-  if (months.length === 0) {
-    return [
-      {m:"Feb 2026", v:0}, {m:"Mar 2026", v:0}, {m:"Apr 2026", v:0},
-      {m:"May 2026", v:0}, {m:"Jun 2026", v:0}, {m:"Jul 2026", v:0}
-    ];
-  }
-  return months.map(m => {
-    const parts = m.split("-");
-    const d = new Date(parts[0], parts[1]-1, 1);
-    const label = d.toLocaleDateString("en-US", {month:"short", year:"numeric"});
-    return {m: label, v: byMonth[m]};
-  });
+  return Object.keys(byMonth).sort().slice(-6).map(month => ({m: periodLabel(month), v: byMonth[month]}));
 }
 
-function buildLiveTopVendors(invs) {
-  if (!invs || !invs.length) return [];
+function buildLiveTopVendors(validInvoices) {
   const map = {};
-  invs.forEach(i => {
-    const name = i.supplier || i.supplier_name || "Supplier";
-    map[name] = (map[name] || 0) + (i.gst || 0);
+  (validInvoices || []).forEach(i => {
+    if (!i.supplier) return;
+    map[i.supplier] = (map[i.supplier] || 0) + (Number(i.gst) || 0);
   });
-  const sorted = Object.entries(map).sort((a,b) => b[1] - a[1]);
-  return sorted.slice(0,5).map(([name, amount]) => ({name, amount}));
+  return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, amount]) => ({name, amount}));
+}
+
+// Compact Indian-currency axis labels: ₹1.8L, ₹45K, ₹900.
+function compactInr(v) {
+  const n = Number(v) || 0;
+  if (n >= 1e7) return "₹" + (n / 1e7).toFixed(1).replace(/\.0$/, "") + "Cr";
+  if (n >= 1e5) return "₹" + (n / 1e5).toFixed(1).replace(/\.0$/, "") + "L";
+  if (n >= 1e3) return "₹" + (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
+  return "₹" + Math.round(n);
 }
 
 function renderTrendChartSvg(trend) {
-  const max = Math.max(...trend.map(t=>t.v), 1000);
+  // Geometry matches the card (about 480×230) so text is not stretched.
+  const W = 480, H = 230, left = 48, right = 30, top = 14, bottom = 196;
+  const max = Math.max(...trend.map(t => t.v), 1000);
   const ceilMax = Math.ceil(max / 1000) * 1000;
-  const h = 160;
-  const w = 560;
-  const stepX = trend.length > 1 ? w / (trend.length - 1) : w;
-
-  const pts = trend.map((t, idx) => {
-    const x = 50 + idx * stepX;
-    const y = 180 - (t.v / ceilMax) * 140;
-    return {x, y, m: t.m, v: t.v};
-  });
-
+  const span = W - left - right;
+  const stepX = trend.length > 1 ? span / (trend.length - 1) : 0;
+  const pts = trend.map((t, idx) => ({
+    x: trend.length > 1 ? left + idx * stepX : left + span / 2,
+    y: bottom - (t.v / ceilMax) * (bottom - top),
+    m: t.m
+  }));
   let pathD = `M ${pts[0].x} ${pts[0].y}`;
   for (let i = 1; i < pts.length; i++) {
-    const prev = pts[i-1];
-    const curr = pts[i];
-    const midX = (prev.x + curr.x) / 2;
+    const prev = pts[i - 1], curr = pts[i], midX = (prev.x + curr.x) / 2;
     pathD += ` C ${midX} ${prev.y}, ${midX} ${curr.y}, ${curr.x} ${curr.y}`;
   }
-  const areaD = `${pathD} L ${pts[pts.length-1].x} 180 L ${pts[0].x} 180 Z`;
-
-  const yLabels = [
-    {y: 20, l: inr(ceilMax)},
-    {y: 60, l: inr(ceilMax * 0.75)},
-    {y: 100, l: inr(ceilMax * 0.5)},
-    {y: 140, l: inr(ceilMax * 0.25)},
-    {y: 180, l: "₹0"}
-  ];
-
+  const areaD = `${pathD} L ${pts[pts.length - 1].x} ${bottom} L ${pts[0].x} ${bottom} Z`;
+  const grid = [1, 0.75, 0.5, 0.25, 0].map(f => ({
+    y: bottom - f * (bottom - top),
+    l: f ? compactInr(ceilMax * f) : "₹0"
+  }));
   return `
-    <svg viewBox="0 0 650 200" width="100%" height="100%" preserveAspectRatio="none">
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
       <defs>
         <linearGradient id="trend-grad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#4f46e5" stop-opacity="0.18"/>
           <stop offset="100%" stop-color="#4f46e5" stop-opacity="0.0"/>
         </linearGradient>
       </defs>
-      ${yLabels.map(yl => `
-        <line x1="50" y1="${yl.y}" x2="640" y2="${yl.y}" stroke="${yl.y === 180 ? '#e2e8f0' : '#f1f5f9'}" stroke-width="1"/>
-        <text x="44" y="${yl.y + 4}" fill="#94a3b8" font-size="10.5" text-anchor="end">${yl.l}</text>
+      ${grid.map(g => `
+        <line x1="${left}" y1="${g.y}" x2="${W - right}" y2="${g.y}" stroke="${g.y === bottom ? '#e2e8f0' : '#f1f5f9'}" stroke-width="1"/>
+        <text x="${left - 8}" y="${g.y + 4}" fill="#94a3b8" font-size="11" text-anchor="end">${g.l}</text>
       `).join("")}
       <path d="${areaD}" fill="url(#trend-grad)"/>
       <path d="${pathD}" fill="none" stroke="#4f46e5" stroke-width="2.5"/>
-      ${pts.map(p => `
-        <circle cx="${p.x}" cy="${p.y}" r="4" fill="#4f46e5" stroke="#fff" stroke-width="2"/>
-        <text x="${p.x}" y="196" fill="#64748b" font-size="11" text-anchor="middle">${p.m}</text>
+      ${pts.map(pt => `
+        <circle cx="${pt.x}" cy="${pt.y}" r="4" fill="#4f46e5" stroke="#fff" stroke-width="2"/>
+        <text x="${pt.x}" y="${H - 8}" fill="#64748b" font-size="11.5" text-anchor="middle">${esc(pt.m)}</text>
       `).join("")}
     </svg>
   `;
@@ -2536,9 +3157,7 @@ function renderDonutChartSvg(counts) {
 function renderVendorBarsSvg(vendors) {
   if (!vendors || !vendors.length) {
     return `
-      <div style="display:grid;place-items:center;height:100%;color:var(--muted);font-size:12px">
-        No vendor ITC records found yet
-      </div>
+      <div class="chart-empty">No eligible vendor ITC yet</div>
     `;
   }
   const max = Math.max(...vendors.map(v => v.amount), 1000);
@@ -2551,19 +3170,19 @@ function renderVendorBarsSvg(vendors) {
       <line x1="30" y1="70" x2="310" y2="70" stroke="#f1f5f9" stroke-width="1"/>
       <line x1="30" y1="110" x2="310" y2="110" stroke="#e2e8f0" stroke-width="1"/>
 
-      <text x="24" y="34" fill="#94a3b8" font-size="9" text-anchor="end">${inr(ceilMax)}</text>
-      <text x="24" y="74" fill="#94a3b8" font-size="9" text-anchor="end">${inr(ceilMax/2)}</text>
+      <text x="24" y="34" fill="#94a3b8" font-size="9" text-anchor="end">${compactInr(ceilMax)}</text>
+      <text x="24" y="74" fill="#94a3b8" font-size="9" text-anchor="end">${compactInr(ceilMax/2)}</text>
       <text x="24" y="114" fill="#94a3b8" font-size="9" text-anchor="end">₹0</text>
 
       ${vendors.map((v, i) => {
         const x = 56 + i * 54;
         const barH = Math.max(4, (v.amount / ceilMax) * maxH);
         const y = 110 - barH;
-        const shortName = v.name.length > 10 ? v.name.slice(0,9) + '…' : v.name;
+        const shortName = v.name.length > 11 ? v.name.slice(0, 10) + '…' : v.name;
         return `
-          <text x="${x + 11}" y="${y - 6}" fill="#0f172a" font-size="9" font-weight="600" text-anchor="middle">${inr(v.amount)}</text>
-          <rect x="${x}" y="${y}" width="22" height="${barH}" rx="3" fill="#4f46e5"/>
-          <text x="${x + 11}" y="125" fill="#64748b" font-size="8.5" text-anchor="middle">${esc(shortName)}</text>
+          <text x="${x + 11}" y="${y - 6}" fill="#0f172a" font-size="9" font-weight="600" text-anchor="middle">${compactInr(v.amount)}</text>
+          <rect x="${x}" y="${y}" width="22" height="${barH}" rx="3" fill="#4f46e5"><title>${esc(v.name)}: ${esc(inr(v.amount))}</title></rect>
+          <text x="${x + 11}" y="125" fill="#64748b" font-size="8.5" text-anchor="middle"><title>${esc(v.name)}</title>${esc(shortName)}</text>
         `;
       }).join("")}
     </svg>
@@ -2588,11 +3207,7 @@ const fileInput = $("#modal-file-input");
 
 if (browseLink) browseLink.onclick = e => { e.preventDefault(); fileInput.click(); };
 if (fileInput) fileInput.onchange = () => {
-  if (fileInput.files[0]) {
-    S.selectedFile = fileInput.files[0];
-    $("#modal-file-info").textContent = "Selected: " + S.selectedFile.name;
-    $("#modal-upload-btn").disabled = false;
-  }
+  if (fileInput.files[0]) selectUploadFile(fileInput.files[0]);
 };
 
 document.addEventListener("dragover", e => {
@@ -2608,11 +3223,7 @@ document.addEventListener("drop", e => {
   if (d) {
     e.preventDefault();
     d.classList.remove("drag");
-    if (e.dataTransfer.files[0]) {
-      S.selectedFile = e.dataTransfer.files[0];
-      $("#modal-file-info").textContent = "Selected: " + S.selectedFile.name;
-      $("#modal-upload-btn").disabled = false;
-    }
+    if (e.dataTransfer.files[0]) selectUploadFile(e.dataTransfer.files[0]);
   }
 });
 
@@ -2631,9 +3242,11 @@ $(".side-bottom").addEventListener("click", e => {
 });
 
 // Init
+try { if (sessionStorage.getItem("milaan.sampleView") === "1") S.demoMode = true; } catch (e) {}
 if (location.search.includes("demo=1")) {
   S.demoMode = true;
 }
+updateModeUI();
 const initialHash = (location.hash || "#dashboard").slice(1);
 setView(initialHash);
 loadState();

@@ -555,6 +555,7 @@ def _parse_supported_tables(
     content: bytes,
     source_format: str,
     skipped_sheets: list[str],
+    fallback_period: str | None = None,
 ) -> gstr2b.ParsedGstr2b | None:
     located: list[tuple[str, list[list[Any]], int]] = []
     for sheet_name, rows in tables:
@@ -593,7 +594,7 @@ def _parse_supported_tables(
                     seen_keys=seen_keys,
                     source_sheet=sheet_name,
                     source_row=offset,
-                    fallback_period=None,
+                    fallback_period=fallback_period,
                 )
             )
     if not parsed_rows:
@@ -611,4 +612,154 @@ def _parse_supported_tables(
         unsupported_fields=unique_unknown,
         sheets_used=tuple(name for name, _rows, _index in located),
         skipped_sheets=tuple(skipped_sheets),
+    )
+
+
+# --- GST-portal GSTR-2B JSON ------------------------------------------------
+# The portal JSON nests invoices as data.docdata.b2b[].inv[].items[] (older
+# and GSTR-2A-shaped exports use data.b2b / b2b and itms[].itm_det). Each
+# invoice is flattened into one portal-shaped row and validated by the same
+# _parse_portal_row rules as the Excel export, so amounts, ITC availability,
+# reverse charge and cess are handled identically. Amounts are summed with
+# Decimal; a missing taxable value is never replaced by the invoice value.
+
+JSON_ROW_HEADERS = [
+    "GSTIN of supplier", "Invoice number", "Invoice Date", "Taxable Value",
+    "Integrated Tax", "Central Tax", "State/UT Tax", "Cess",
+    "GSTR-1/IFF/GSTR-5 Period", "ITC Availability", "Reason",
+    "Supply Attract Reverse Charge", "Invoice Value", "IRN", "Invoice type",
+]
+_JSON_ITEM_KEYS = {
+    "taxable_value": ("txval",),
+    "igst": ("igst", "iamt"),
+    "cgst": ("cgst", "camt"),
+    "sgst": ("sgst", "samt"),
+    "cess": ("cess", "csamt"),
+}
+_JSON_SECTIONS_SKIPPED = ("b2ba", "cdnr", "cdnra", "isd", "isda", "impg", "impgsez")
+
+
+def _json_b2b_container(data: Any) -> tuple[Any, dict] | None:
+    """Return (b2b list, container dict) for a portal-shaped JSON document."""
+    if not isinstance(data, dict):
+        return None
+    candidates = []
+    inner = data.get("data")
+    if isinstance(inner, dict):
+        if isinstance(inner.get("docdata"), dict):
+            candidates.append(inner["docdata"])
+        candidates.append(inner)
+    if isinstance(data.get("docdata"), dict):
+        candidates.append(data["docdata"])
+    candidates.append(data)
+    for container in candidates:
+        if "b2b" in container:
+            return container["b2b"], container
+    return None
+
+
+def _sum_json_amount(items: list[dict], field: str, path: str) -> str:
+    """Sum one tax field over invoice items as an exact rupee string.
+
+    Absent keys count as zero (the portal omits zero taxes). Anything that is
+    not a plain number is returned verbatim so row validation rejects it.
+    """
+    total = Decimal("0")
+    found = False
+    for item in items:
+        for key in _JSON_ITEM_KEYS[field]:
+            if key not in item:
+                continue
+            value = item[key]
+            found = True
+            if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+                return f"invalid value at {path}.{key}"
+            try:
+                amount = Decimal(str(value).strip())
+            except InvalidOperation:
+                return str(value)
+            if not amount.is_finite():
+                return str(value)
+            total += amount
+            break
+    if field == "taxable_value" and not found:
+        return ""
+    return format(total, "f")
+
+
+def try_parse_portal_json(content: bytes, file_name: str) -> gstr2b.ParsedGstr2b | None:
+    """Parse GST-portal GSTR-2B JSON; return None when the JSON is not portal-shaped."""
+    try:
+        data = json.loads(content.decode("utf-8-sig"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ValueError(f"JSON file is not valid JSON text: {exc}") from exc
+    located = _json_b2b_container(data)
+    if located is None:
+        return None
+    b2b, container = located
+    if not isinstance(b2b, list):
+        raise ValueError("GSTR-2B JSON: 'b2b' must be a list of suppliers. Nothing was imported.")
+
+    root = data.get("data") if isinstance(data.get("data"), dict) else data
+    fallback_period = parse_tax_period(root.get("rtnprd") or data.get("rtnprd"))
+    skipped = [
+        key for key in _JSON_SECTIONS_SKIPPED
+        if isinstance(container.get(key), list) and container.get(key)
+    ]
+
+    rows: list[list[Any]] = []
+    for s_index, supplier in enumerate(b2b):
+        s_path = f"b2b[{s_index}]"
+        if not isinstance(supplier, dict):
+            raise ValueError(f"GSTR-2B JSON: {s_path} must be an object. Nothing was imported.")
+        invoices = supplier.get("inv", [])
+        if not isinstance(invoices, list):
+            raise ValueError(f"GSTR-2B JSON: {s_path}.inv must be a list. Nothing was imported.")
+        for i_index, inv in enumerate(invoices):
+            i_path = f"{s_path}.inv[{i_index}]"
+            if not isinstance(inv, dict):
+                raise ValueError(f"GSTR-2B JSON: {i_path} must be an object. Nothing was imported.")
+            raw_items = inv.get("items", inv.get("itms", []))
+            if not isinstance(raw_items, list):
+                raise ValueError(f"GSTR-2B JSON: {i_path}.items must be a list. Nothing was imported.")
+            items = []
+            for t_index, item in enumerate(raw_items):
+                if not isinstance(item, dict):
+                    raise ValueError(
+                        f"GSTR-2B JSON: {i_path}.items[{t_index}] must be an object. Nothing was imported."
+                    )
+                detail = item.get("itm_det", item)
+                if not isinstance(detail, dict):
+                    raise ValueError(
+                        f"GSTR-2B JSON: {i_path}.items[{t_index}].itm_det must be an object. "
+                        "Nothing was imported."
+                    )
+                items.append(detail)
+            amounts = {field: _sum_json_amount(items, field, f"{i_path}.items") for field in _JSON_ITEM_KEYS}
+            rows.append([
+                supplier.get("ctin") or "",
+                inv.get("inum") if inv.get("inum") is not None else "",
+                inv.get("dt") or inv.get("idt") or "",
+                amounts["taxable_value"],
+                amounts["igst"],
+                amounts["cgst"],
+                amounts["sgst"],
+                amounts["cess"],
+                supplier.get("supprd") or "",
+                inv.get("itcavl") or "",
+                inv.get("rsn") or "",
+                inv.get("rev") or "",
+                inv.get("val") if inv.get("val") is not None else "",
+                inv.get("irn") or "",
+                inv.get("typ") or inv.get("inv_typ") or "",
+            ])
+    if not rows:
+        raise ValueError("GSTR-2B JSON contains no B2B invoices. Nothing was imported.")
+    return _parse_supported_tables(
+        [("JSON b2b", [JSON_ROW_HEADERS, *rows])],
+        file_name=file_name,
+        content=content,
+        source_format="json",
+        skipped_sheets=skipped,
+        fallback_period=fallback_period,
     )

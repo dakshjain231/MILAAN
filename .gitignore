@@ -18,6 +18,10 @@ backups/
 logs/
 .run/
 .last_backup_path
+# Background demo launcher (start/status/stop_milaan_demo.sh): PID/state
+# files live in .run/demo/, logs in logs/demo/; both are covered above.
+*.pid
+*.log.1
 
 # SQLite Database
 *.db

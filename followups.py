@@ -57,6 +57,38 @@ VALIDATION_VALID = "valid"
 MATCH_MISSING = "MISSING_FROM_2B"
 METHOD_NONE = "none"
 
+# Supplier follow-up workflow status shown to the user. This is distinct
+# from the reconciliation status of the invoices a draft covers and from the
+# stored draft status: it combines the draft status with later-statement
+# recovery evidence (db.get_followup_recovery_status).
+WORKFLOW_PENDING = "PENDING"
+WORKFLOW_NEEDS_REVIEW = "NEEDS_REVIEW"
+WORKFLOW_IN_PROGRESS = "IN_PROGRESS"
+WORKFLOW_RESOLVED = "RESOLVED"
+WORKFLOW_SKIPPED = "SKIPPED"
+RECOVERY_VERIFIED = "VERIFIED"
+
+
+def followup_workflow_status(draft_status: str, recovery_status: str | None) -> str:
+    """Derive the follow-up workflow status from stored state and evidence.
+
+    RESOLVED requires VERIFIED recovery: every invoice in the draft has a
+    unique matching row with equal GST in one later GSTR-2B batch. Approval,
+    a sent message, skipping or a draft merely existing never resolves a
+    follow-up. Verified evidence recorded before a draft was skipped is
+    preserved, because the evidence still stands.
+    """
+    if draft_status not in DRAFT_STATUSES:
+        raise ValueError(f"unknown follow-up draft status: {draft_status!r}")
+    if recovery_status == RECOVERY_VERIFIED:
+        return WORKFLOW_RESOLVED
+    return {
+        STATUS_DRAFT: WORKFLOW_PENDING,
+        STATUS_NEEDS_REVIEW: WORKFLOW_NEEDS_REVIEW,
+        STATUS_APPROVED: WORKFLOW_IN_PROGRESS,
+        STATUS_SKIPPED: WORKFLOW_SKIPPED,
+    }[draft_status]
+
 
 @dataclass(frozen=True)
 class CandidateInvoice:

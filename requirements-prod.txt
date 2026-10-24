@@ -1,0 +1,3 @@
+-r requirements.txt
+# Production WSGI server (Linux/macOS). Used by the Dockerfile.
+gunicorn==26.2.0

@@ -1,0 +1,42 @@
+{
+  "_comment": "Synthetic GST-portal-shaped GSTR-2B JSON for the MILAAN demo. Pairs with demo/demo_purchase_invoices.csv. Fictional GSTINs with valid check digits; never use for filing.",
+  "data": {
+    "gstin": "08ABCDE1234F1Z0",
+    "rtnprd": "092026",
+    "docdata": {
+      "b2b": [
+        {
+          "ctin": "08ABCDE1234F1Z0",
+          "trdnm": "(Synthetic) Demo Alpha Traders",
+          "supprd": "092026",
+          "inv": [
+            {"inum": "DEMO-101", "dt": "03-09-2026", "val": 11800, "itcavl": "Y", "rev": "N",
+             "items": [{"num": 1, "rt": 18, "txval": 10000, "cgst": 900, "sgst": 900}]},
+            {"inum": "DEMO-103", "dt": "11-09-2026", "val": 11500, "itcavl": "Y", "rev": "N",
+             "items": [{"num": 1, "rt": 15, "txval": 10000, "cgst": 750, "sgst": 750}]}
+          ]
+        },
+        {
+          "ctin": "08PQRSX5678L1ZW",
+          "trdnm": "(Synthetic) Demo Pinnacle Supplies",
+          "supprd": "092026",
+          "inv": [
+            {"inum": "DEMO-102", "dt": "08-09-2026", "val": 5900, "itcavl": "Y", "rev": "N",
+             "items": [{"num": 1, "rt": 18, "txval": 5000, "igst": 900}]}
+          ]
+        },
+        {
+          "ctin": "08LMNOP2345Q1Z0",
+          "trdnm": "(Synthetic) Demo Lotus Hardware",
+          "supprd": "092026",
+          "inv": [
+            {"inum": "DEMO-104", "dt": "15-09-2026", "val": 2832, "itcavl": "Y", "rev": "N",
+             "items": [{"num": 1, "rt": 18, "txval": 2400, "cgst": 216, "sgst": 216}]},
+            {"inum": "DEMO-999", "dt": "20-09-2026", "val": 1180, "itcavl": "Y", "rev": "N",
+             "items": [{"num": 1, "rt": 18, "txval": 1000, "cgst": 90, "sgst": 90}]}
+          ]
+        }
+      ]
+    }
+  }
+}

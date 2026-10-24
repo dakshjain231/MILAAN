@@ -1,0 +1,7 @@
+supplier_name,supplier_gstin,invoice_number,invoice_date,tax_period,taxable_value,gst_rate,cgst,sgst,igst,total_gst,invoice_total,contact_phone
+(Synthetic) Demo Alpha Traders,08ABCDE1234F1Z0,DEMO-101,2026-09-03,2026-09,10000.00,18,900.00,900.00,0.00,1800.00,11800.00,
+(Synthetic) Demo Pinnacle Supplies,08PQRSX5678L1ZW,DEMO-102,2026-09-08,2026-09,5000.00,18,0.00,0.00,900.00,900.00,5900.00,
+(Synthetic) Demo Alpha Traders,08ABCDE1234F1Z0,DEMO-103,2026-09-11,2026-09,10000.00,18,900.00,900.00,0.00,1800.00,11800.00,
+(Synthetic) Demo Lotus Hardware,08LMNOP2345Q1Z0,DEMO-104,2026-09-15,2026-09,2400.00,18,216.00,216.00,0.00,432.00,2832.00,
+(Synthetic) Demo Umang Electricals,08UVWXY9876A1ZG,DEMO-105,2026-09-18,2026-09,3200.00,18,288.00,288.00,0.00,576.00,3776.00,
+(Synthetic) Demo Alpha Traders,08ABCDE1234F1Z0,DEMO-106,2026-09-19,2026-09,1000.00,18,90.00,90.00,0.00,190.00,1190.00,

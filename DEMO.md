@@ -95,9 +95,10 @@ Evidence table:
 | `DEMO-MISSING-002` | `MISSING_FROM_2B` |
 | `DEMO-INVALID-001` | `NOT_ELIGIBLE` |
 
-Click **Inspect** on a mismatch or missing bill to compare the purchase bill
-and the linked GSTR-2B row, including reason codes and amount differences.
-Open **Exceptions** to show the same evidence filtered to open exceptions.
+Use the row's **⋮** action on a mismatch or missing bill to compare the
+purchase bill and the linked GSTR-2B row, including reason codes and amount
+differences. Use the **Status** filter (then **Apply filters**) to show only
+open mismatches.
 
 Talking point: `MISSING_FROM_2B` means only that this batch has no usable
 counterpart. It does not prove supplier non-filing, ITC eligibility or
