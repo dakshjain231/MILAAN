@@ -14,7 +14,20 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_dotenv(path: Path | None = None) -> None:
-    """Minimal .env loader (KEY=VALUE lines). Existing env vars win."""
+    """Minimal .env loader (KEY=VALUE lines). Existing env vars win.
+
+    ``get_settings()`` calls this, and ``agent/store.py`` calls
+    ``get_settings()`` to resolve its database path, so this runs lazily
+    inside request handling. That means an *unset* variable is filled in from
+    ``.env`` rather than staying unset: to run with a setting genuinely off,
+    set it explicitly (``MILAAN_WA_LIVE_FOLLOWUPS=false``) — unsetting it is
+    not enough. ``MILAAN_SKIP_DOTENV=1`` disables this loader entirely, which
+    is what tests and CI should use to guarantee a clean environment.
+    """
+    if os.environ.get("MILAAN_SKIP_DOTENV", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }:
+        return
     path = path or ROOT / ".env"
     if not path.exists():
         return

@@ -3,6 +3,7 @@
 const { loadConfig } = require('./config');
 const { ConnectionState } = require('./state');
 const { createServer } = require('./server');
+const { InboundQueue } = require('./inbound');
 
 async function main() {
   const config = loadConfig();
@@ -27,9 +28,10 @@ async function main() {
   }
 
   const state = new ConnectionState();
+  const inboundQueue = config.inboundEnabled ? new InboundQueue() : null;
   let adapter;
   try {
-    adapter = createWhatsAppClient({ config, state });
+    adapter = createWhatsAppClient({ config, state, inboundQueue });
   } catch (error) {
     console.error(
       'MILAAN WhatsApp service could not create the client. '
@@ -38,7 +40,7 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  const server = createServer({ config, state, adapter });
+  const server = createServer({ config, state, adapter, inboundQueue });
 
   await new Promise((resolve, reject) => {
     server.once('error', reject);

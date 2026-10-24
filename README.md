@@ -131,6 +131,30 @@ WhatsApp at startup.
 Uploads are limited to 25 MB. `demo/demo_purchase_invoices.csv` and
 `demo/demo_gstr2b_portal.json` are a matching synthetic pair for walkthroughs.
 
+### Sending files over WhatsApp instead of uploading them
+
+With the bridge linked and `MILAAN_WA_INBOUND_ENABLED=true`, an allowlisted
+number can send the same two file types **to** the linked WhatsApp account and
+MILAAN imports them automatically — no browser upload. Settings → *Inbound
+WhatsApp documents* is the receipt for every message, including the ones that
+could not be read. Once a purchase register and a GSTR-2B batch share a tax
+period, reconciliation runs and supplier follow-up drafts are prepared in the
+same pass.
+
+| Sent over WhatsApp | Result |
+| --- | --- |
+| CSV / XLSX purchase register | Imported; duplicates skipped by invoice key |
+| JSON / CSV / XLSX GSTR-2B export | Imported as a batch; identical file not re-imported |
+| PDF | **Not read** — no PDF text-extraction or OCR service is configured |
+| Photo of an invoice | **Not read** — no vision/OCR service (`LLM_API_KEY` unset) |
+| Voice note (Hindi or English) | **Not read** — no speech-to-text service (`GEMINI_API_KEY` unset) |
+| Legacy `.xls`, video, anything else | **Not read** — logged with the reason |
+
+Unsupported messages are never guessed at: each is recorded with the precise
+blocker so the gap is visible rather than silent. Receiving a file never sends
+a reply, and a prepared follow-up still needs the usual explicit approval and
+two confirmations before anything can be delivered.
+
 
 ## Services and ports
 
@@ -167,6 +191,31 @@ phone. Service health, database paths and the guarded demo test-send are in
 The demo test-send uses only `MILAAN_WA_TEST_RECIPIENT`. The supplier phone
 on a draft is never used by the demo. Live outbound sends still require an
 approved draft and explicit confirmation in the UI.
+
+#### Real Supplier Follow-ups delivery over this bridge
+
+Off by default. To turn it on, add:
+
+```dotenv
+MILAAN_WA_LIVE_FOLLOWUPS=true
+MILAAN_WA_ALLOWED_RECIPIENTS=<your-own-number>   # comma separated
+```
+
+`MILAAN_WA_ALLOWED_RECIPIENTS` is a hard allowlist enforced twice — in
+`webjs.py` before any HTTP call and again in the Node service — so a supplier
+or any other number is refused with nothing sent. Approval freezes a draft's
+recipient, so set the draft's number to an allowlisted one **before**
+approving it.
+
+In **Supplier Follow-ups**, open an approved draft: the *Send a real WhatsApp
+message (WhatsApp Web)* panel checks the bridge and the linked session, then
+offers a **Send WhatsApp message** button behind two tick-boxes and a final
+"Yes, send now" confirmation. Nothing is ever sent automatically. The result
+is a real `message_deliveries` row (provider `whatsapp_web_js`) carrying the
+bridge's actual status — `SENT` with WhatsApp's message ID, `FAILED`, or
+`UNKNOWN` when the outcome could not be established. `UNKNOWN` is never
+retried automatically, because the message may already have arrived.
+**Simulate send** remains available and is always recorded as a simulation.
 
 ### 2. Meta WhatsApp Cloud API
 
@@ -278,6 +327,24 @@ npm run check
 
 Tests use temporary databases, mock delivery, and no live network sends.
 
+Browser end-to-end rehearsal of the whole workspace script, against a
+disposable demo database (never `milaan.db`):
+
+```bash
+rm -f demo/sarcathon_demo.db demo/sarcathon_agent.db
+DATABASE_PATH="$PWD/demo/sarcathon_demo.db" AGENT_DB_PATH="$PWD/demo/sarcathon_agent.db" \
+  .venv/bin/python scripts/run_primary.py --port 8599 &
+NODE_PATH=whatsapp_service/node_modules node scripts/demo_e2e.js \
+  http://127.0.0.1:8599 . /tmp/milaan-shots
+```
+
+Last verified on 2026-10-24: **672 Python tests**, **75 Node tests**, **25/25
+browser checks** (the browser run passes both with the WhatsApp Web bridge
+live and with delivery switched off). Inbound WhatsApp intake is covered by
+`test_inbound.py`, `test_inbound_web.py` and
+`whatsapp_service/test/inbound*.test.js`; the pilot send restriction is pinned
+across all three enforcement layers by `test_pilot_safety.py`.
+
 ## Troubleshooting
 
 - **WhatsApp shows `disconnected` with no QR.** A previous bridge run may have
@@ -319,6 +386,17 @@ launcher.
   sent. Cloud API and Twilio credentials are not configured in this checkout.
 - Live OCR/LLM extraction was not tested (no LLM key configured); offline
   fixtures and deterministic extraction tests pass.
+- Inbound WhatsApp documents cover tabular files only (CSV/XLSX/JSON).
+  Photos, PDFs and voice notes are detected, logged and refused with the
+  reason — they are **not** extracted or transcribed, because no OCR, PDF
+  text-extraction or speech-to-text service is configured. Supplying
+  `LLM_API_KEY` / `GEMINI_API_KEY` would be the prerequisite for that work;
+  the agent subsystem's image extraction exists but is a separate pipeline
+  from this bridge.
+- The agent settings loader copies `.env` into the process environment
+  lazily, with `setdefault`. An *unset* variable is therefore filled in from
+  `.env` rather than staying unset: set a switch to `false` explicitly to
+  turn it off, or run with `MILAAN_SKIP_DOTENV=1` for a clean environment.
 - The only web interface is `agent/web/primary.html`, served by
   `milaan_web.py`. The read-only agent history adapter (`agent_views.py`)
   feeds `/api/state`; there is no separate agent page in the six-page UI.

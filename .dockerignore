@@ -1,0 +1,66 @@
+# Build context exclusions for the MILAAN production image.
+#
+# The Dockerfile uses `COPY . ./`, so anything left here ends up in the image
+# layers and ships with it. Keep credentials, operational data and local
+# runtime state out: an image is not a secret store.
+
+# --- credentials and secrets ---
+.env
+.env.local
+.env.*
+!.env.example
+!.env.agent.example
+
+# Linked WhatsApp Web device credentials. Anyone with these can resume the
+# session as the linked account, so they must never leave this machine.
+.wwebjs_auth/
+.wwebjs_cache/
+whatsapp_service/.wwebjs_auth/
+whatsapp_service/.wwebjs_cache/
+
+# --- operational data ---
+# DATABASE_PATH points at /data in the image; the local database and its
+# backups are real accounting records and are never baked in.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+backups/
+agent_data/
+demo/*.db
+inbound_media/
+logs/
+.run/
+.last_backup_path
+
+# --- local build and tooling artifacts ---
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+whatsapp_service/node_modules/
+node_modules/
+
+# --- version control and editor state ---
+.git/
+.gitignore
+.github/
+.devcontainer/
+.vscode/
+.idea/
+.claude/
+.agents/
+.cursor/
+.DS_Store
+
+# --- things the running app does not need ---
+cloudflared.exe
+MILAAN_FINAL.zip
+milaan-final/
+site/
+test_*.py
+conftest.py
+benchmark.py
+reconciliation_eval.py

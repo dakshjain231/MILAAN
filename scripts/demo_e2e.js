@@ -100,7 +100,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(1000);
   check('A5 approved -> In progress', (await state()).followups[0].workflow_status === 'IN_PROGRESS');
   const modalText = await page.$eval('#draft-modal-content', (e) => e.innerText);
-  check('A5 modal states live delivery is off', /Live WhatsApp delivery is off/.test(modalText), modalText.slice(0, 200));
+  // The modal must state the delivery mode truthfully, which depends on how
+  // this machine is configured: asserting "off" unconditionally would demand
+  // a false statement whenever the WhatsApp Web bridge is live. Either way a
+  // simulated send must be offered and nothing may be sent without the two
+  // confirmations below.
+  const prov = (await state()).provider || {};
+  const expected = prov.webjs_live
+    ? /Live WhatsApp Web sending is enabled/
+    : prov.cloud
+      ? /WhatsApp Cloud API delivery is configured/
+      : /Live WhatsApp delivery is off/;
+  check(
+    `A5 modal states the delivery mode (${prov.webjs_live ? 'webjs live' : prov.cloud ? 'cloud' : 'off'})`,
+    expected.test(modalText) && /simulat/i.test(modalText),
+    modalText.slice(0, 300)
+  );
   await page.click('#send-optin'); await page.click('#send-confirm');
   await page.evaluate((id) => sendDraft(id, 'mock'), d.id);
   await sleep(1000);

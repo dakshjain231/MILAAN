@@ -447,7 +447,7 @@ CREATE TABLE IF NOT EXISTS message_deliveries (
     recipient_phone_snapshot TEXT NOT NULL,
     message_body_snapshot TEXT NOT NULL,
     provider TEXT NOT NULL
-        CHECK (provider IN ('whatsapp_cloud_api', 'mock')),
+        CHECK (provider IN ('whatsapp_cloud_api', 'mock', 'whatsapp_web_js')),
     status TEXT NOT NULL DEFAULT 'QUEUED'
         CHECK (status IN ('QUEUED', 'SENDING', 'SENT', 'DELIVERED', 'READ',
                           'RETRY_PENDING', 'FAILED', 'UNKNOWN')),
@@ -543,6 +543,51 @@ CREATE INDEX IF NOT EXISTS idx_message_replies_from_phone
     ON message_replies(from_phone);
 """
 
+INBOUND_DOCUMENTS_DDL = """
+CREATE TABLE IF NOT EXISTS inbound_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wa_message_id TEXT NOT NULL UNIQUE,
+    channel TEXT NOT NULL DEFAULT 'whatsapp_web',
+    from_masked TEXT,
+    kind TEXT NOT NULL,
+    document_kind TEXT,
+    file_name TEXT,
+    mime_type TEXT,
+    file_size INTEGER,
+    file_hash TEXT,
+    stored_path TEXT,
+    status TEXT NOT NULL
+        CHECK (status IN ('imported', 'duplicate', 'rejected',
+                          'unsupported', 'recorded', 'failed')),
+    reason TEXT,
+    detail TEXT,
+    message_text TEXT,
+    gstr2b_import_id INTEGER,
+    imported_rows INTEGER NOT NULL DEFAULT 0,
+    duplicate_rows INTEGER NOT NULL DEFAULT 0,
+    rejected_rows INTEGER NOT NULL DEFAULT 0,
+    suppliers_created INTEGER NOT NULL DEFAULT 0,
+    reconciliation_run_id INTEGER,
+    drafts_created INTEGER NOT NULL DEFAULT 0,
+    received_at TEXT,
+    processed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (gstr2b_import_id) REFERENCES gstr2b_imports(id)
+        ON DELETE SET NULL,
+    CHECK (length(wa_message_id) <= 300),
+    CHECK (length(from_masked) <= 32),
+    CHECK (length(file_name) <= 300),
+    CHECK (length(file_hash) <= 64),
+    CHECK (length(message_text) <= 4096),
+    CHECK (imported_rows >= 0 AND duplicate_rows >= 0 AND rejected_rows >= 0)
+);
+CREATE INDEX IF NOT EXISTS idx_inbound_documents_hash
+    ON inbound_documents(file_hash);
+CREATE INDEX IF NOT EXISTS idx_inbound_documents_processed_at
+    ON inbound_documents(processed_at);
+CREATE INDEX IF NOT EXISTS idx_inbound_documents_status
+    ON inbound_documents(status);
+"""
+
 SCHEMA = (
     SUPPLIERS_DDL
     + SYSTEM_META_DDL
@@ -558,6 +603,7 @@ SCHEMA = (
     + FOLLOWUP_VERIFICATIONS_DDL
     + MESSAGE_DELIVERIES_DDL
     + WEBHOOK_TABLES_DDL
+    + INBOUND_DOCUMENTS_DDL
     + INDEX_DDL
     + GSTR2B_INDEX_DDL
     + RECONCILIATION_INDEX_DDL
@@ -784,6 +830,74 @@ def _table_sql(conn: sqlite3.Connection, name: str) -> str | None:
     return row["sql"] if row is not None else None
 
 
+def _needs_message_delivery_provider_migration(conn: sqlite3.Connection) -> bool:
+    """True if message_deliveries still rejects the whatsapp-web.js provider."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master "
+        "WHERE type = 'table' AND name = 'message_deliveries'"
+    ).fetchone()
+    return row is not None and "whatsapp_web_js" not in (row["sql"] or "")
+
+
+def _migrate_message_delivery_provider_check(conn: sqlite3.Connection) -> None:
+    """Allow ``provider = 'whatsapp_web_js'`` on an existing table.
+
+    SQLite cannot alter a CHECK constraint, so the table is rebuilt in the
+    documented safe order (create new, copy, drop old, rename new) which
+    keeps row ids and every stored delivery. A verified backup is written
+    first when rows exist; the rebuild runs in one transaction and rolls back
+    unless the row count and foreign keys still check out. Foreign keys are
+    disabled by the caller during init.
+    """
+    count = conn.execute("SELECT COUNT(*) FROM message_deliveries").fetchone()[0]
+    if count:
+        backup_database(label="pre-whatsapp-web-provider-migration")
+    columns = [
+        row["name"] for row in conn.execute("PRAGMA table_info(message_deliveries)")
+    ]
+    new_ddl = MESSAGE_DELIVERIES_DDL.replace(
+        "CREATE TABLE IF NOT EXISTS message_deliveries (",
+        "CREATE TABLE message_deliveries_new (",
+    )
+    column_list = ", ".join(columns)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(new_ddl)
+        new_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(message_deliveries_new)")
+        }
+        missing = set(columns) - new_columns
+        if missing:
+            raise RuntimeError(
+                "message_deliveries has columns the migration does not know: "
+                + ", ".join(sorted(missing))
+            )
+        conn.execute(
+            f"INSERT INTO message_deliveries_new ({column_list}) "
+            f"SELECT {column_list} FROM message_deliveries"
+        )
+        copied = conn.execute(
+            "SELECT COUNT(*) FROM message_deliveries_new"
+        ).fetchone()[0]
+        if copied != count:
+            raise RuntimeError(
+                "message_deliveries row count changed during migration"
+            )
+        conn.execute("DROP TABLE message_deliveries")
+        conn.execute(
+            "ALTER TABLE message_deliveries_new RENAME TO message_deliveries"
+        )
+        if conn.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError(
+                "foreign key check failed after message_deliveries migration"
+            )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
 def _migrate_gstr2b_evidence_columns(conn: sqlite3.Connection) -> None:
     """Additive ITC-evidence columns for GSTR-2B staging. Never drops rows."""
     import_columns = _table_columns(conn, "gstr2b_imports")
@@ -974,6 +1088,10 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         _migrate_followup_approval_snapshots(conn)
         _migrate_message_delivery_webhook_columns(conn)
+        if _needs_message_delivery_provider_migration(conn):
+            _migrate_message_delivery_provider_check(conn)
+            # Rebuilding drops the old table's indexes with it.
+            conn.executescript(MESSAGE_DELIVERY_INDEX_DDL)
         _migrate_gstr2b_evidence_columns(conn)
         if _needs_validation_status_migration(conn):
             _migrate_validation_status_check(conn)
@@ -2997,7 +3115,7 @@ def skip_followup_draft(draft_id: int) -> None:
 # module only stores fail-closed state transitions and never tokens or raw
 # HTTP responses.
 
-DELIVERY_PROVIDERS = ("whatsapp_cloud_api", "mock")
+DELIVERY_PROVIDERS = ("whatsapp_cloud_api", "mock", "whatsapp_web_js")
 
 _BLOCKING_DELIVERY_STATUSES = (
     "QUEUED",
@@ -3714,9 +3832,142 @@ def get_incoming_replies(limit: int = 100) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+# --- inbound WhatsApp documents -------------------------------------------
+# One row per inbound WhatsApp message that carried (or claimed to carry) a
+# file. The row is the audit record: it is written for rejected, unsupported
+# and duplicate messages too, so nothing an operator sent can vanish without
+# a recorded reason. ``wa_message_id`` is UNIQUE, which makes re-delivery of
+# the same WhatsApp message impossible to import twice.
+
+_INBOUND_DOCUMENT_FIELDS = (
+    "wa_message_id", "channel", "from_masked", "kind", "document_kind",
+    "file_name", "mime_type", "file_size", "file_hash", "stored_path",
+    "status", "reason", "detail", "message_text", "gstr2b_import_id",
+    "imported_rows", "duplicate_rows", "rejected_rows", "suppliers_created",
+    "reconciliation_run_id", "drafts_created", "received_at",
+)
+
+
+def record_inbound_document(**fields) -> dict:
+    """Insert one inbound-document record and return it.
+
+    Raises ValueError when this WhatsApp message id was already recorded:
+    the caller is expected to check :func:`get_inbound_document_by_message_id`
+    first, and this is the backstop that keeps a concurrent poll honest.
+    """
+    unknown = set(fields) - set(_INBOUND_DOCUMENT_FIELDS)
+    if unknown:
+        raise ValueError(
+            "unknown inbound document field(s): " + ", ".join(sorted(unknown))
+        )
+    if not str(fields.get("wa_message_id") or "").strip():
+        raise ValueError("wa_message_id is required")
+    columns = [name for name in _INBOUND_DOCUMENT_FIELDS if name in fields]
+    placeholders = ", ".join("?" for _ in columns)
+    values = tuple(fields[name] for name in columns)
+    try:
+        with db() as conn:
+            cursor = conn.execute(
+                f"INSERT INTO inbound_documents ({', '.join(columns)}) "
+                f"VALUES ({placeholders})",
+                values,
+            )
+            row = conn.execute(
+                "SELECT * FROM inbound_documents WHERE id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(
+            f"inbound WhatsApp message {fields['wa_message_id']!r} was "
+            "already recorded"
+        ) from exc
+    return dict(row)
+
+
+def get_inbound_document_by_message_id(wa_message_id: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM inbound_documents WHERE wa_message_id = ?",
+            (str(wa_message_id),),
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def find_inbound_documents_by_hash(file_hash: str) -> list[dict]:
+    """Earlier inbound documents with the same SHA-256, newest first."""
+    if not file_hash:
+        return []
+    with db() as conn:
+        rows = conn.execute(
+            """SELECT * FROM inbound_documents
+               WHERE file_hash = ? ORDER BY id DESC""",
+            (str(file_hash),),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_inbound_documents(limit: int = 50) -> list[dict]:
+    """Inbound history, newest first, for the dashboard."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM inbound_documents ORDER BY id DESC LIMIT ?",
+            (max(1, int(limit)),),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_invoice_tax_periods(*, validation_status: str | None = "valid") -> list[str]:
+    """Distinct tax periods present in the purchase register, ascending."""
+    query = "SELECT DISTINCT tax_period FROM invoices"
+    params: tuple[object, ...] = ()
+    if validation_status is not None:
+        query += " WHERE validation_status = ?"
+        params = (validation_status,)
+    query += " ORDER BY tax_period"
+    with db() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [row["tax_period"] for row in rows if row["tax_period"]]
+
+
+def get_gstr2b_batch_periods(import_id: int, *, valid_only: bool = True) -> list[str]:
+    """Distinct tax periods reported by one GSTR-2B batch, ascending."""
+    query = "SELECT DISTINCT tax_period FROM gstr2b_rows WHERE import_id = ?"
+    params: list[object] = [int(import_id)]
+    if valid_only:
+        query += " AND validation_status = 'valid'"
+    query += " ORDER BY tax_period"
+    with db() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [row["tax_period"] for row in rows if row["tax_period"]]
+
+
+def find_latest_gstr2b_import_for_periods(periods) -> int | None:
+    """The newest GSTR-2B batch with a valid row in any of these periods.
+
+    Used by the inbound workflow to pick the batch a newly imported purchase
+    register should be reconciled against. Returns None when no batch covers
+    any of the periods, so the caller can report that instead of guessing.
+    """
+    wanted = [str(period) for period in periods if period]
+    if not wanted:
+        return None
+    placeholders = ", ".join("?" for _ in wanted)
+    with db() as conn:
+        row = conn.execute(
+            f"""SELECT import_id FROM gstr2b_rows
+                WHERE validation_status = 'valid'
+                  AND tax_period IN ({placeholders})
+                ORDER BY import_id DESC LIMIT 1""",
+            tuple(wanted),
+        ).fetchone()
+    return int(row["import_id"]) if row is not None else None
+
+
 def clear_all_data() -> dict:
     """Clear all uploaded invoices, GSTR-2B imports, reconciliation runs, and follow-ups."""
     with db() as conn:
+        # Cleared before gstr2b_imports: inbound_documents references it.
+        conn.execute("DELETE FROM inbound_documents")
         conn.execute("DELETE FROM message_replies")
         conn.execute("DELETE FROM message_status_events")
         conn.execute("DELETE FROM message_deliveries")

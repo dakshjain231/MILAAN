@@ -1,11 +1,25 @@
-"""Loopback-only client for the local ``whatsapp-web.js`` demo service.
+"""Loopback-only client for the local ``whatsapp-web.js`` service.
 
-This is deliberately separate from the Cloud API delivery pipeline. The
-WhatsApp Web demo sends *one* message to an explicitly configured and
-consented test recipient; it never sends to suppliers automatically and it
-does not create a supplier delivery record. Session credentials live in the
-Node service's gitignored ``.wwebjs_auth`` directory and are never read or
-logged here.
+This is deliberately separate from the Cloud API delivery pipeline. Session
+credentials live in the Node service's gitignored ``.wwebjs_auth`` directory
+and are never read or logged here.
+
+Two entry points use this bridge:
+
+- :func:`demo_test_send_message` / :func:`demo_test_send` send one message to
+  the configured test recipient and record only an audit event.
+- :func:`send_followup_live` is the real Supplier Follow-ups delivery path.
+  It creates a ``message_deliveries`` row through ``delivery.py``, so the
+  recorded status and WhatsApp message ID are the provider's own.
+
+Every send through this module passes an allowlist gate
+(``MILAAN_WA_ALLOWED_RECIPIENTS``, defaulting to ``MILAAN_WA_TEST_RECIPIENT``)
+inside :class:`WhatsAppWebJsProvider`. A recipient that is not on the
+allowlist is refused locally, before any HTTP call: supplier numbers can
+never be reached through this channel, however the provider is invoked.
+Live follow-up delivery additionally requires
+``MILAAN_WA_LIVE_FOLLOWUPS=true``, a linked WhatsApp Web session and two
+explicit confirmations per send; nothing is ever sent automatically.
 """
 
 from __future__ import annotations
@@ -57,12 +71,53 @@ class WebJsConfig:
     test_recipient: str | None = None
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     issues: tuple[str, ...] = field(default_factory=tuple)
+    # Numbers this bridge may message at all. Empty means "the configured
+    # test recipient only"; it never means "anyone".
+    allowed_recipients: tuple[str, ...] = field(default_factory=tuple)
+    # Master switch for real Supplier Follow-ups delivery over this bridge.
+    live_followups: bool = False
+
+    def allowlist_digits(self) -> tuple[str, ...]:
+        """Normalized digits of every number this bridge may message.
+
+        Falls back to the configured test recipient so an operator cannot
+        widen the allowlist by leaving it unset. Implausible entries are
+        dropped here and reported by :meth:`problems`.
+        """
+        raw = self.allowed_recipients or (
+            (self.test_recipient,) if self.test_recipient else ()
+        )
+        digits: list[str] = []
+        for value in raw:
+            normalized = db.normalize_phone_digits(value)
+            if normalized is not None and normalized not in digits:
+                digits.append(normalized)
+        return tuple(digits)
+
+    def is_allowed_recipient(self, value: str | None) -> bool:
+        normalized = db.normalize_phone_digits(value)
+        if normalized is None:
+            return False
+        return normalized in self.allowlist_digits()
 
     def problems(self) -> list[str]:
         problems = list(self.issues)
         if not self.enabled:
             problems.append("MILAAN_WA_ENABLED is not true")
             return problems
+
+        for value in self.allowed_recipients:
+            if db.normalize_phone_digits(value) is None:
+                problems.append(
+                    "MILAAN_WA_ALLOWED_RECIPIENTS contains a number that is "
+                    "not plausible"
+                )
+                break
+        if not self.allowlist_digits():
+            problems.append(
+                "no allowed recipient is configured "
+                "(MILAAN_WA_ALLOWED_RECIPIENTS or MILAAN_WA_TEST_RECIPIENT)"
+            )
 
         parsed = urlparse((self.base_url or "").strip())
         if parsed.scheme != "http":
@@ -98,6 +153,10 @@ class WebJsConfig:
             "test_recipient_masked": mask_phone(self.test_recipient),
             "timeout_seconds": self.timeout_seconds,
             "problems": self.problems(),
+            "live_followups": self.live_followups,
+            "allowed_recipients_masked": [
+                mask_phone(value) for value in self.allowlist_digits()
+            ],
         }
 
 
@@ -105,6 +164,17 @@ def _env_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in _TRUE_VALUES
+
+
+def _parse_recipients(raw: str | None) -> tuple[str, ...]:
+    """Split a comma- or semicolon-separated allowlist, preserving order.
+
+    Spaces inside an entry are kept, so ``+91 88888 88888`` stays one number.
+    """
+    if not raw:
+        return ()
+    parts = [piece.strip() for piece in str(raw).replace(";", ",").split(",")]
+    return tuple(piece for piece in parts if piece)
 
 
 def load_webjs_config(
@@ -135,6 +205,10 @@ def load_webjs_config(
         test_recipient=test_recipient,
         timeout_seconds=timeout,
         issues=tuple(issues),
+        allowed_recipients=_parse_recipients(
+            env.get("MILAAN_WA_ALLOWED_RECIPIENTS")
+        ),
+        live_followups=_env_bool(env.get("MILAAN_WA_LIVE_FOLLOWUPS"), False),
     )
 
 
@@ -301,9 +375,13 @@ def fetch_qr_png(config: WebJsConfig | None = None) -> bytes | None:
 class WhatsAppWebJsProvider:
     """Provider-shaped adapter for the local whatsapp-web.js service.
 
-    Kept out of ``DELIVERY_PROVIDERS`` on purpose: the primary UI calls
-    :func:`demo_test_send` directly so a message can only go to the consented
-    test recipient, never to a supplier through this channel.
+    Every send passes the configured allowlist first, so this provider can
+    only ever reach a number the operator listed in
+    ``MILAAN_WA_ALLOWED_RECIPIENTS`` (or ``MILAAN_WA_TEST_RECIPIENT``).
+    A supplier number is refused locally, with no HTTP call, whichever code
+    path calls :meth:`send`. ``max_attempts`` is 1: WhatsApp Web may have
+    accepted a message whose outcome came back unknown, so an automatic
+    retry could duplicate it.
     """
 
     name = PROVIDER_WEBJS
@@ -340,6 +418,17 @@ class WhatsAppWebJsProvider:
                 outcome=delivery.OUTCOME_INVALID_REQUEST,
                 error_code="INVALID_RECIPIENT",
                 error_message="Recipient phone number is not plausible.",
+            )
+        if not self.config.is_allowed_recipient(recipient):
+            # Hard stop before any network call: this channel is restricted
+            # to the configured allowlist, so suppliers are unreachable here.
+            return delivery.ProviderResponse(
+                outcome=delivery.OUTCOME_INVALID_REQUEST,
+                error_code="RECIPIENT_NOT_ALLOWED",
+                error_message=(
+                    "This recipient is not on the WhatsApp Web allowlist. "
+                    "No message was sent."
+                ),
             )
         try:
             status, payload = _call(
@@ -395,6 +484,18 @@ class WhatsAppWebJsProvider:
                 error_message=(
                     "The local service accepted the request without a valid "
                     "message ID."
+                ),
+            )
+        if code == "recipient_not_allowed":
+            # The Node service keeps its own allowlist; a refusal there means
+            # nothing was handed to WhatsApp.
+            return delivery.ProviderResponse(
+                outcome=delivery.OUTCOME_INVALID_REQUEST,
+                http_status=status,
+                error_code="RECIPIENT_NOT_ALLOWED",
+                error_message=(
+                    "The local service refused the recipient: it is not on "
+                    "the service allowlist. No message was sent."
                 ),
             )
         if status in (401, 403):
@@ -601,3 +702,153 @@ def demo_test_send_message(
         subject_id="demo-test",
         extra_details={"draft_id": None, "mode": "standalone"},
     )
+
+
+# --- live Supplier Follow-ups delivery ------------------------------------
+
+LIVE_MODE = "whatsapp_web"
+
+
+def live_send_preflight(config: WebJsConfig | None = None) -> dict:
+    """Report whether a live follow-up send could run right now.
+
+    Never sends and never raises. ``available`` is True only when the live
+    switch is on, the configuration is complete, the local bridge answers and
+    its WhatsApp Web session is linked and ready.
+    """
+    cfg = config or load_webjs_config()
+    problems: list[str] = []
+    if not cfg.live_followups:
+        problems.append(
+            "live WhatsApp Web delivery is off (MILAAN_WA_LIVE_FOLLOWUPS is "
+            "not true)"
+        )
+    problems.extend(cfg.problems())
+    status = service_status(cfg)
+    if not status["reachable"]:
+        # "disabled" and "misconfigured" are already covered by cfg.problems().
+        if status["status"] not in ("disabled", "misconfigured"):
+            problems.append(
+                "the local WhatsApp Web bridge is not reachable on "
+                f"{(cfg.base_url or '').strip()}"
+            )
+    elif not status["ready"]:
+        if status["qr_available"]:
+            problems.append(
+                "the WhatsApp Web session is not linked: scan the QR code in "
+                "Settings first"
+            )
+        else:
+            problems.append(
+                "the WhatsApp Web session is not ready "
+                f"(status: {status['status']})"
+            )
+    deduped: list[str] = []
+    for problem in problems:
+        if problem not in deduped:
+            deduped.append(problem)
+    return {
+        "mode": LIVE_MODE,
+        "available": not deduped,
+        "problems": deduped,
+        "status": status,
+        "live_followups": cfg.live_followups,
+        "allowed_recipients_masked": [
+            mask_phone(value) for value in cfg.allowlist_digits()
+        ],
+        "linked_phone_masked": status.get("phone_masked"),
+    }
+
+
+def draft_recipient_allowed(
+    draft_id: int, config: WebJsConfig | None = None
+) -> bool:
+    """True if this draft's approved recipient is on the allowlist."""
+    cfg = config or load_webjs_config()
+    eligibility = db.get_delivery_eligibility(draft_id)
+    return cfg.is_allowed_recipient(eligibility["approved_recipient_phone"])
+
+
+def send_followup_live(
+    draft_id: int,
+    *,
+    config: WebJsConfig | None = None,
+    actor: str = "ui",
+    confirmed: bool = False,
+    opt_in_confirmed: bool = False,
+) -> dict:
+    """Deliver an approved follow-up through the local WhatsApp Web bridge.
+
+    Unlike :func:`demo_test_send` this is the real Supplier Follow-ups
+    delivery path: it creates a ``message_deliveries`` record through
+    ``delivery.py``, so the returned status (SENT / FAILED / UNKNOWN /
+    RETRY_PENDING) and ``provider_message_id`` are the bridge's own answer,
+    never a simulation.
+
+    Both confirmations are mandatory, the bridge must be live and linked, and
+    the draft's approved recipient must be on the allowlist. Any failure
+    raises or is recorded honestly; nothing is reported as delivered unless
+    WhatsApp Web returned a message ID.
+    """
+    if not confirmed or not opt_in_confirmed:
+        raise WebJsBlocked(
+            "Live send blocked: explicit send confirmation and confirmation "
+            "that the recipient agreed to receive this message are both "
+            "required. No message was sent."
+        )
+    cfg = config or load_webjs_config()
+    preflight = live_send_preflight(cfg)
+    if not preflight["available"]:
+        raise WebJsConfigurationError(
+            "Live send blocked: " + "; ".join(preflight["problems"])
+            + ". No message was sent."
+        )
+    eligibility = db.get_delivery_eligibility(draft_id)
+    if eligibility["draft"] is None:
+        raise KeyError(f"follow-up draft {draft_id} not found")
+    if not eligibility["eligible"]:
+        raise WebJsBlocked(
+            "Live send blocked: " + ", ".join(eligibility["problems"])
+            + ". No message was sent."
+        )
+    recipient = eligibility["approved_recipient_phone"]
+    if not cfg.is_allowed_recipient(recipient):
+        allowed = ", ".join(
+            value or "?" for value in preflight["allowed_recipients_masked"]
+        )
+        raise WebJsBlocked(
+            "Live send blocked: this follow-up's approved recipient is not on "
+            f"the WhatsApp Web allowlist ({allowed or 'empty'}). Set the "
+            "draft's number to an allowlisted number before approving it. "
+            "No message was sent."
+        )
+
+    record = delivery.deliver_approved_draft(
+        draft_id,
+        WhatsAppWebJsProvider(cfg),
+        opt_in_confirmed=True,
+    )
+    try:
+        db.record_system_audit_event(
+            actor=actor,
+            event_type="webjs_live_followup_send",
+            subject_type="followup_draft",
+            subject_id=str(draft_id),
+            details={
+                "provider": PROVIDER_WEBJS,
+                "mode": LIVE_MODE,
+                "delivery_id": record.get("id"),
+                "status": record.get("status"),
+                "recipient_masked": mask_phone(
+                    record.get("recipient_phone_snapshot")
+                ),
+                "provider_message_id": record.get("provider_message_id"),
+                "error_code": record.get("last_error_code"),
+                "recorded_as_delivery": True,
+            },
+        )
+    except Exception:
+        # The delivery record is the source of truth; a failed audit write
+        # must not hide or alter the real outcome.
+        pass
+    return record

@@ -44,6 +44,15 @@ import db
 
 PROVIDER_WHATSAPP = "whatsapp_cloud_api"
 PROVIDER_MOCK = "mock"
+# Local whatsapp-web.js bridge (implemented in webjs.py, which owns the
+# recipient allowlist). Named here so delivery-wide rules can include it
+# without importing that module.
+PROVIDER_WHATSAPP_WEB = "whatsapp_web_js"
+
+# Providers that reach a real person: every delivery needs recorded opt-in.
+OPT_IN_REQUIRED_PROVIDERS = frozenset(
+    {PROVIDER_WHATSAPP, PROVIDER_WHATSAPP_WEB}
+)
 
 OUTCOME_ACCEPTED = "ACCEPTED"
 OUTCOME_RETRYABLE = "RETRYABLE"
@@ -783,7 +792,7 @@ def deliver_approved_draft(
             "Delivery blocked: " + ", ".join(eligibility["problems"])
             + ". No message was sent."
         )
-    if provider.name == PROVIDER_WHATSAPP and not opt_in_confirmed:
+    if provider.name in OPT_IN_REQUIRED_PROVIDERS and not opt_in_confirmed:
         raise DeliveryBlockedError(
             "Delivery blocked: recipient opt-in was not confirmed. WhatsApp "
             "requires users to opt in before receiving business messages; "

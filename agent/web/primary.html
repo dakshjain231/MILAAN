@@ -1161,6 +1161,9 @@ const S = {
   uploadKind: "invoices",
   selectedFile: null,
   activeDraft: null,
+  // Live WhatsApp Web preflight for the open draft: {draft_id, can_send, ...}
+  // from /api/followups/<id>/send-preflight. null until it is read.
+  livePreflight: null,
   pages: {
     invoices: 1,
     gstr2b: 1,
@@ -2376,9 +2379,13 @@ function renderSettings() {
           ? (web.status.qr_available ? "WhatsApp Web waiting for a QR scan" : `WhatsApp Web: ${web.status.status}`)
           : "WhatsApp Web bridge not running";
     const cloudText = wa.cloud
-      ? (wa.cloud.status === "ok" ? "Cloud API delivery configured" : "Cloud API delivery off (mock delivery only)")
+      ? (wa.cloud.status === "ok" ? "Cloud API delivery configured" : "Cloud API delivery off")
       : "Cloud API status unavailable";
-    waText = `${webText} · ${cloudText}`;
+    const allowed = ((web && web.config && web.config.allowed_recipients_masked) || []).filter(Boolean);
+    const liveText = web && web.config && web.config.live_followups
+      ? `live follow-up sending ON for ${allowed.length ? allowed.join(", ") : "no number"}`
+      : "live follow-up sending off (simulation only)";
+    waText = `${webText} · ${liveText} · ${cloudText}`;
   }
   const webReady = !!(wa && wa.web && wa.web.status.ready);
   const webQr = !!(wa && wa.web && wa.web.status.qr_available);
@@ -2467,8 +2474,126 @@ function renderSettings() {
           </div>
         </div>
       </div>
+
+      ${renderInboundPanel()}
     </div>
   `;
+}
+
+// Inbound WhatsApp documents. Files the pilot number sends to the linked
+// WhatsApp Web session are imported here automatically; this panel is the
+// receipt for every one of them, including the ones MILAAN could not read.
+function renderInboundPanel() {
+  const inbound = (S.data && S.data.inbound) || {documents: [], config: {}};
+  const cfg = inbound.config || {};
+  const docs = inbound.documents || [];
+  const senders = (cfg.senders_masked || []).filter(Boolean);
+  const stateText = !cfg.enabled
+    ? "Inbound intake is off (MILAAN_WA_INBOUND_ENABLED)."
+    : cfg.ready
+      ? `Accepting files from ${senders.length ? senders.join(", ") : "no number"}.`
+      : `Not ready: ${esc((cfg.problems || []).join("; "))}`;
+
+  const badge = status => {
+    const map = {
+      imported: ["badge-imported", "Imported"],
+      duplicate: ["badge-check", "Duplicate"],
+      rejected: ["badge-invalid", "Rejected"],
+      unsupported: ["badge-missing", "Unsupported"],
+      recorded: ["badge-pending", "Noted"],
+      failed: ["badge-invalid", "Failed"],
+    };
+    const [cls, label] = map[status] || ["badge-pending", status || "unknown"];
+    return `<span class="badge ${cls}">${esc(label)}</span>`;
+  };
+
+  const rows = docs.length
+    ? docs.map(d => `
+        <tr>
+          <td>${esc((d.at || "").replace("T", " ").slice(0, 16))}</td>
+          <td>${esc(d.from || "—")}</td>
+          <td>${esc(d.file || (d.kind === "text" ? "(text message)" : "(no file name)"))}</td>
+          <td>${esc(d.type ? (d.type === "purchase_invoice" ? "Invoices" : "GSTR-2B") : d.kind || "—")}</td>
+          <td class="center">${badge(d.status)}</td>
+          <td class="right">${d.status === "imported" ? esc(String(d.rows)) : "—"}</td>
+          <td>${esc(d.detail || "")}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="7" style="color:var(--muted)">No WhatsApp documents have arrived yet.
+         Send a purchase register (CSV/XLSX) or a GSTR-2B export (JSON/CSV/XLSX) from an
+         allowlisted number to the linked WhatsApp account.</td></tr>`;
+
+  return `
+    <div class="card" style="grid-column:1/-1">
+      <div class="card-header-row">
+        <div>
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5z"/><path d="M12 15V8M9 11l3 3 3-3"/></svg>
+            Inbound WhatsApp documents
+          </h3>
+          <p>${stateText}</p>
+        </div>
+        <button class="btn btn-secondary" onclick="checkInboundNow()">Check now</button>
+      </div>
+      <p class="muted-note" style="margin:0 0 12px">
+        Supported attachments: <b>CSV</b>, <b>XLSX</b> and <b>JSON</b> (GSTR-2B export).
+        PDFs, photos of invoices and voice notes are <b>not</b> read — MILAAN has no OCR,
+        PDF text extraction or speech-to-text service configured, so each one is logged
+        below with that blocker instead of being guessed at. Importing a file never sends
+        a reply, and a follow-up still needs your explicit approval.
+      </p>
+      <table class="data-table">
+        <thead><tr>
+          <th>Received</th><th>From</th><th>File</th><th>Parsed as</th>
+          <th class="center">Result</th><th class="right">Rows</th><th>Detail</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// Ask the bridge for anything new, then refresh the page data. Used by the
+// "Check now" button and by the background refresh cycle.
+async function checkInboundNow(quiet = false) {
+  try {
+    const result = await api("/api/whatsapp/inbound/poll", {method: "POST"});
+    if (!quiet) {
+      if (!result.enabled) toast("Inbound WhatsApp intake is turned off.", "warn");
+      else if (!result.processed) toast("No new WhatsApp documents.");
+      else toast(
+        `${result.processed} inbound document(s): ${result.imported} imported`
+        + `${result.drafts_created ? `, ${result.drafts_created} follow-up draft(s) prepared` : ""}`
+        + `${result.unsupported ? `, ${result.unsupported} unsupported` : ""}.`,
+        result.imported ? "ok" : "warn"
+      );
+    }
+    if (result.processed) await loadState();
+    return result;
+  } catch (e) {
+    if (!quiet) toast(`Could not check for inbound documents: ${e.message}`, "bad");
+    return null;
+  }
+}
+
+// Background cycle: poll the bridge, and reload the dashboard when something
+// arrived. Paused while the tab is hidden and while a modal is open, so it
+// never interrupts an approval the user is in the middle of.
+const INBOUND_POLL_MS = 20000;
+let inboundTimer = null;
+
+function startInboundAutoRefresh() {
+  if (inboundTimer || S.demoMode) return;
+  inboundTimer = setInterval(async () => {
+    if (document.hidden) return;
+    if (!$("#draft-modal").classList.contains("hide")) return;
+    const cfg = (S.data && S.data.inbound && S.data.inbound.config) || {};
+    if (!cfg.enabled || !cfg.ready) return;
+    await checkInboundNow(true);
+  }, INBOUND_POLL_MS);
+}
+
+function stopInboundAutoRefresh() {
+  if (inboundTimer) clearInterval(inboundTimer);
+  inboundTimer = null;
 }
 
 async function loadWhatsAppStatus(announce = false) {
@@ -2856,10 +2981,113 @@ async function openDraftModal(id) {
   try {
     const d = await api(`/api/followups/${id}`);
     S.activeDraft = d;
+    S.livePreflight = null;
     renderDraftModalContent(d);
+    loadLivePreflight(id);
   } catch(e) {
     toast(`Could not open this follow-up: ${e.message}`, "bad");
   }
+}
+
+// Reads the live WhatsApp Web state for this draft (bridge reachable, session
+// linked, recipient allowlisted). Read-only: it never sends.
+async function loadLivePreflight(id) {
+  // Skip the bridge round-trip entirely when live sending is switched off.
+  if (!(S.data && S.data.provider && S.data.provider.webjs_live)) { S.livePreflight = null; return; }
+  try {
+    S.livePreflight = await api(`/api/followups/${id}/send-preflight`);
+  } catch(e) {
+    S.livePreflight = {draft_id: id, error: e.message, can_send: false, available: false, problems: [e.message]};
+  }
+  const open = S.activeDraft && S.activeDraft.draft && S.activeDraft.draft.id === id
+    && !$("#draft-modal").classList.contains("hide");
+  if (open) renderDraftModalContent(S.activeDraft);
+}
+
+function livePreflightFor(id) {
+  const p = S.livePreflight;
+  return p && p.draft_id === id ? p : null;
+}
+
+function deliveryProviderLabel(provider) {
+  if (provider === "mock") return "Simulation";
+  if (provider === "whatsapp_web_js") return "WhatsApp Web";
+  if (provider === "whatsapp_cloud_api") return "Cloud API";
+  return provider || "Unknown";
+}
+
+// What a delivery record actually proves, in plain words. A simulation is
+// never described as a delivery, and an unknown outcome is never a success.
+function deliveryStatusNote(v) {
+  if (v.provider === "mock") return "simulated only — no WhatsApp message was sent";
+  if (v.status === "SENT") return "accepted by WhatsApp (not a read receipt)";
+  if (v.status === "DELIVERED") return "delivered";
+  if (v.status === "READ") return "read";
+  if (v.status === "UNKNOWN") return "outcome unknown — check the chat before resending";
+  if (v.status === "FAILED") return "not sent";
+  if (v.status === "RETRY_PENDING") return "waiting for a manual retry";
+  return "";
+}
+
+// The live WhatsApp Web panel. It only offers a Send button when a real send
+// could actually run: bridge reachable, session linked, recipient allowlisted,
+// draft still eligible and no delivery recorded yet. Every other case states
+// what is missing instead of offering a button that would fail.
+function liveSendPanel(x, pre) {
+  const recheck = `<button class="btn btn-secondary" onclick="loadLivePreflight(${x.id})">Re-check bridge</button>`;
+  if (!pre) return `<p class="muted-note">Checking the WhatsApp Web bridge…</p>`;
+  if (pre.existing_delivery) {
+    const v = pre.existing_delivery;
+    return `
+      <p class="muted-note">This follow-up already has a delivery record (${esc(deliveryProviderLabel(v.provider))} · ${esc(v.status)}${deliveryStatusNote(v) ? ` · ${esc(deliveryStatusNote(v))}` : ""}). MILAAN keeps one message per follow-up, so no further send is offered here.</p>
+      ${v.message_id ? `<p class="muted-note">Message ID: ${esc(v.message_id)}</p>` : ""}`;
+  }
+  if (!pre.available) {
+    return `
+      <div class="upload-notice warn"><b>Live sending is not available right now:</b><ul>${(pre.problems || []).map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>
+      <div class="modal-actions" style="justify-content:flex-start">${recheck}</div>`;
+  }
+  if (!pre.recipient_allowed) {
+    const allowed = (pre.allowed_recipients_masked || []).filter(Boolean).map(esc).join(", ");
+    return `
+      <div class="upload-notice warn"><b>Blocked:</b> this follow-up's approved recipient (${esc(pre.recipient_masked || "unknown")}) is not on the WhatsApp Web allowlist${allowed ? ` (${allowed})` : ""}. Suppliers are never messaged through this channel. Prepare a follow-up whose recipient is an allowlisted number and approve that one.</div>
+      <div class="modal-actions" style="justify-content:flex-start">${recheck}</div>`;
+  }
+  if (!pre.draft_eligible) {
+    return `
+      <div class="upload-notice warn"><b>Blocked:</b> this follow-up is no longer eligible for delivery (${(pre.draft_problems || []).map(esc).join(", ")}). Nothing was sent.</div>
+      <div class="modal-actions" style="justify-content:flex-start">${recheck}</div>`;
+  }
+  return `
+    <p class="muted-note">Linked WhatsApp account: ${esc(pre.linked_phone_masked || "linked")}. This sends one real WhatsApp message to ${esc(pre.recipient_masked || "the allowlisted number")} and records the WhatsApp message ID. Nothing is sent until you confirm below.</p>
+    <label class="check-line"><input type="checkbox" id="live-optin"> ${esc(pre.recipient_masked || "This number")} has agreed to receive this message.</label>
+    <label class="check-line"><input type="checkbox" id="live-confirm"> Send this approved message now as a real WhatsApp message.</label>
+    <div id="live-send-actions" class="modal-actions" style="justify-content:flex-start">
+      ${recheck}
+      <button class="btn btn-primary" id="live-send-btn" onclick="armLiveSend(${x.id})">Send WhatsApp message</button>
+    </div>`;
+}
+
+// Second, explicit step: the Send button never sends on its own click.
+function armLiveSend(id) {
+  const optIn = $("#live-optin"), confirmSend = $("#live-confirm");
+  if (!optIn || !optIn.checked || !confirmSend || !confirmSend.checked) {
+    toast("Tick both confirmations first. Nothing was sent.", "bad");
+    return;
+  }
+  const pre = livePreflightFor(id);
+  const to = (pre && pre.recipient_masked) || "the allowlisted number";
+  $("#live-send-actions").innerHTML = `
+    <span class="muted-note" style="margin-right:auto">Send one real WhatsApp message to ${esc(to)} now?</span>
+    <button class="btn btn-secondary" onclick="renderDraftModalContent(S.activeDraft)">Cancel</button>
+    <button class="btn btn-primary" id="live-send-go" onclick="confirmLiveSend(${id})">Yes, send now</button>`;
+}
+
+async function confirmLiveSend(id) {
+  const go = $("#live-send-go");
+  if (go) { go.disabled = true; go.textContent = "Sending…"; }
+  await sendDraft(id, "whatsapp_web");
+  await loadLivePreflight(id);
 }
 
 function renderDraftModalContent(d) {
@@ -2875,13 +3103,30 @@ function renderDraftModalContent(d) {
         <td class="right">${esc(i["Taxable (Rs)"])}</td><td class="right">${esc(i["GST (Rs)"])}</td>
         <td>${getReconBadge(String(i.Reason || "").split(":")[0])}</td></tr>`).join("");
   const deliveries = (d.deliveries || []).map(v => `
-    <li>${esc(v.provider === "mock" ? "Simulation" : "Cloud API")} · ${esc(v.status)} · ${esc(fmtDate(v.sent_at || v.created))}${v.error ? ` · ${esc(v.error)}` : ""}</li>`).join("");
+    <li>${esc(deliveryProviderLabel(v.provider))} · ${esc(v.status)} · ${esc(fmtDate(v.sent_at || v.created))}
+        ${deliveryStatusNote(v) ? ` · ${esc(deliveryStatusNote(v))}` : ""}
+        ${v.message_id ? `<br><small style="color:var(--muted)">Message ID: ${esc(v.message_id)}</small>` : ""}
+        ${v.error ? `<br><small style="color:var(--muted)">${esc(v.error)}</small>` : ""}</li>`).join("");
   const events = (d.events || []).slice(-5).reverse().map(ev => `
     <li>${esc(ev.At || ev.at || "")} · ${esc(ev.Event || ev.event || "")}${ev.Note || ev.note ? ` · ${esc(ev.Note || ev.note)}` : ""}</li>`).join("");
 
+  const liveOn = !!(S.data && S.data.provider && S.data.provider.webjs_live);
+  const liveAllowed = ((S.data && S.data.provider && S.data.provider.webjs_allowed_recipients) || []).filter(Boolean);
+  const pre = livePreflightFor(x.id);
+
   let actions = "";
   if (x.status === "DRAFT") {
+    const recipientBlocked = liveOn && pre && !pre.recipient_allowed;
     actions = `
+      ${liveOn ? `
+        <div class="modal-section" style="border-top:0;margin-top:0;padding-top:0">
+          <b>Recipient for live WhatsApp sending</b>
+          <p class="muted-note">Live WhatsApp Web sending only reaches ${liveAllowed.length ? `the allowlisted number ${liveAllowed.map(esc).join(", ")}` : "an allowlisted number"}. This draft's recipient is ${esc(x.contact_phone || "not set")}${recipientBlocked ? " — not allowlisted, so live sending will be refused" : ""}. The recipient is frozen when you approve, so change it here first if you want to send live. Nothing is sent now.</p>
+          <div class="modal-actions" style="justify-content:flex-start">
+            <input class="form-input" id="draft-phone" placeholder="+91 88888 88888" style="max-width:220px">
+            <button class="btn btn-secondary" onclick="saveDraftPhone(${x.id})">Save number</button>
+          </div>
+        </div>` : ""}
       <label class="check-line"><input type="checkbox" id="draft-approve-check"> I reviewed this message. Approving it sends nothing.</label>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="skipDraft(${x.id})">Skip</button>
@@ -2908,16 +3153,23 @@ function renderDraftModalContent(d) {
     actions = `
       <div class="modal-section">
         <b>Delivery</b>
-        <p class="muted-note">${cloudReady
-          ? "WhatsApp Cloud API delivery is configured."
-          : "Live WhatsApp delivery is off (WHATSAPP_ENABLED is not set). Only a simulated send is available."}</p>
-        <label class="check-line"><input type="checkbox" id="send-optin"> The supplier has agreed to receive WhatsApp messages.</label>
+        <p class="muted-note">${liveOn
+          ? "Live WhatsApp Web sending is enabled for allowlisted numbers. A simulated send records a simulation only."
+          : cloudReady
+            ? "WhatsApp Cloud API delivery is configured."
+            : "Live WhatsApp delivery is off. Only a simulated send is available."}</p>
+        <label class="check-line"><input type="checkbox" id="send-optin"> The recipient has agreed to receive WhatsApp messages.</label>
         <label class="check-line"><input type="checkbox" id="send-confirm"> Send the approved message exactly as shown.</label>
         <div class="modal-actions">
           <button class="btn btn-secondary" onclick="sendDraft(${x.id}, 'mock')">Simulate send</button>
-          ${cloudReady ? `<button class="btn btn-primary" onclick="sendDraft(${x.id}, 'live')">Send via WhatsApp</button>` : ""}
+          ${cloudReady ? `<button class="btn btn-primary" onclick="sendDraft(${x.id}, 'live')">Send via Cloud API</button>` : ""}
         </div>
       </div>
+      ${liveOn ? `
+      <div class="modal-section">
+        <b>Send a real WhatsApp message (WhatsApp Web)</b>
+        ${liveSendPanel(x, pre)}
+      </div>` : ""}
       <div class="modal-section">
         <b>Check a later GSTR-2B statement</b>
         <p class="muted-note">Resolved only when every invoice appears in one later GSTR-2B import with the same GST.</p>
@@ -2958,10 +3210,15 @@ function renderDraftModalContent(d) {
   $("#draft-modal").classList.remove("hide");
 }
 
-async function draftAction(id, request, success) {
+async function draftAction(id, request, success, mode) {
   try {
     const r = await request();
-    toast(success);
+    if (mode === "whatsapp_web") {
+      const [message, kind] = liveSendToast(r && r.delivery);
+      toast(message, kind);
+    } else {
+      toast(success);
+    }
     await loadState();
     const detail = r && r.draft ? r : (r && r.detail ? r.detail : await api(`/api/followups/${id}`));
     renderDraftModalContent(detail);
@@ -3005,12 +3262,33 @@ function skipDraft(id) {
 }
 
 function sendDraft(id, mode) {
-  const optIn = $("#send-optin").checked, confirmSend = $("#send-confirm").checked;
-  if (!optIn || !confirmSend) { toast("Tick both confirmations first. Nothing was sent.", "bad"); return; }
+  // The live WhatsApp Web path has its own confirmations (armLiveSend).
+  if (mode !== "whatsapp_web") {
+    const optIn = $("#send-optin").checked, confirmSend = $("#send-confirm").checked;
+    if (!optIn || !confirmSend) { toast("Tick both confirmations first. Nothing was sent.", "bad"); return; }
+  }
+  const note = mode === "mock"
+    ? "Simulated send recorded. No WhatsApp message was sent."
+    : mode === "whatsapp_web"
+      ? "WhatsApp Web answered. The recorded status below is its real answer."
+      : "Message handed to WhatsApp Cloud API.";
   return draftAction(id, () => api(`/api/followups/${id}/send`, {method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({mode, confirm_send: true, opt_in_confirmed: true})}),
-    mode === "mock" ? "Simulated send recorded. No WhatsApp message was sent." : "Message handed to WhatsApp Cloud API.");
+    note, mode);
+}
+
+// What the delivery record says, said plainly. A real send is only reported as
+// sent when WhatsApp Web returned a message ID.
+function liveSendToast(v) {
+  if (!v) return ["No delivery record was returned. Check the delivery log.", "bad"];
+  if (v.status === "SENT" && v.message_id) {
+    return [`Sent to ${v.to}. WhatsApp message ID ${v.message_id}. This is acceptance by WhatsApp, not a read receipt.`, "ok"];
+  }
+  if (v.status === "UNKNOWN") {
+    return [`Outcome unknown: WhatsApp Web did not confirm the send${v.error_code ? ` (${v.error_code})` : ""}. The message may or may not have arrived — check the chat before resending.`, "bad"];
+  }
+  return [`Not sent (${v.status}${v.error_code ? `: ${v.error_code}` : ""}). ${v.error || ""}`.trim(), "bad"];
 }
 
 function verifyDraft(id) {
@@ -3295,7 +3573,7 @@ if (location.search.includes("demo=1")) {
 updateModeUI();
 const initialHash = (location.hash || "#dashboard").slice(1);
 setView(initialHash);
-loadState();
+loadState().then(startInboundAutoRefresh);
 </script>
 </body>
 </html>

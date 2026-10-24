@@ -27,6 +27,10 @@ logs/
 *.db
 *.sqlite3
 
+# Attachments downloaded from inbound WhatsApp messages. Real accounting
+# files from a real phone: they stay on the machine that received them.
+inbound_media/
+
 # Packaging artifacts
 MILAAN_FINAL.zip
 milaan-final/

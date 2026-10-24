@@ -3,6 +3,7 @@
 const http = require('node:http');
 const { tokenMatches, extractToken } = require('./auth');
 const { validateSend } = require('./validation');
+const { isAllowedRecipient } = require('./config');
 const { ConnectionState } = require('./state');
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -44,7 +45,13 @@ function maskForLog(text) {
     .slice(0, 300);
 }
 
-function createServer({ config, state, adapter, logger = console.error }) {
+function createServer({
+  config,
+  state,
+  adapter,
+  inboundQueue = null,
+  logger = console.error,
+}) {
   const connectionState = state || new ConnectionState();
   const clientAdapter = adapter || {
     async sendText() {
@@ -82,6 +89,45 @@ function createServer({ config, state, adapter, logger = console.error }) {
       });
     }
 
+    // --- inbound intake (read + acknowledge only; never sends) -----------
+    // MILAAN polls these: /inbound lists metadata, /inbound/media returns the
+    // bytes for one entry, /inbound/ack drops it once MILAAN has committed
+    // the import. An entry that is never acknowledged stays queued, so a
+    // crash on the MILAAN side cannot lose a document.
+
+    if (req.method === 'GET' && requestUrl.pathname === '/inbound') {
+      if (!authorized) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      if (!inboundQueue) {
+        return sendJson(res, 200, {
+          ok: true, documents: [], queued: 0, dropped: 0, enabled: false,
+        });
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        documents: inboundQueue.list(),
+        queued: inboundQueue.size,
+        dropped: inboundQueue.dropped,
+        enabled: config.inboundEnabled !== false,
+      });
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/inbound/media') {
+      if (!authorized) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      const id = requestUrl.searchParams.get('id');
+      if (!id) return sendJson(res, 400, { ok: false, error: 'missing_id' });
+      const entry = inboundQueue ? inboundQueue.get(id) : null;
+      if (!entry) return sendJson(res, 404, { ok: false, error: 'not_found' });
+      return sendJson(res, 200, { ok: true, document: entry });
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/inbound/ack') {
+      if (!authorized) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      const id = requestUrl.searchParams.get('id');
+      if (!id) return sendJson(res, 400, { ok: false, error: 'missing_id' });
+      const acknowledged = inboundQueue ? inboundQueue.ack(id) : false;
+      return sendJson(res, 200, { ok: true, acknowledged });
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/send') {
       if (!authorized) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
       let raw;
@@ -102,6 +148,12 @@ function createServer({ config, state, adapter, logger = console.error }) {
       }
       const parsed = validateSend(body);
       if (!parsed.ok) return sendJson(res, 400, { ok: false, error: parsed.error });
+      // Allowlist gate, independent of the caller: an unlisted recipient is
+      // refused here before the WhatsApp client is touched. An empty
+      // allowlist blocks every send.
+      if (!isAllowedRecipient(config, parsed.to)) {
+        return sendJson(res, 403, { ok: false, error: 'recipient_not_allowed' });
+      }
       if (connectionState.snapshot().status !== 'ready') {
         return sendJson(res, 409, { ok: false, error: 'not_ready' });
       }

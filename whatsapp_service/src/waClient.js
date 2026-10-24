@@ -3,8 +3,9 @@
 const QRCode = require('qrcode');
 const { sendAndConfirm } = require('./sendConfirm');
 const { maskForLog } = require('./server');
+const { createInboundHandler } = require('./inbound');
 
-function createWhatsAppClient({ config, state }) {
+function createWhatsAppClient({ config, state, inboundQueue = null }) {
   // Loaded lazily so the HTTP layer and its tests never require Chromium.
   const { Client, LocalAuth } = require('whatsapp-web.js');
 
@@ -41,6 +42,26 @@ function createWhatsAppClient({ config, state }) {
   client.on('disconnected', () =>
     state.set('disconnected', { error: 'DISCONNECTED' })
   );
+
+  // Inbound intake: queue documents from allowlisted senders for MILAAN to
+  // poll. The handler never replies, so an incoming message can never
+  // trigger an outgoing one.
+  if (inboundQueue && config.inboundEnabled !== false) {
+    const onMessage = createInboundHandler({
+      config,
+      queue: inboundQueue,
+      download: (message) => message.downloadMedia(),
+    });
+    client.on('message', (message) => {
+      Promise.resolve(onMessage(message)).catch((error) => {
+        console.error(
+          'MILAAN WhatsApp inbound: intake failed: '
+            + maskForLog(error && error.name) + ': '
+            + maskForLog(error && error.message)
+        );
+      });
+    });
+  }
 
   return {
     async initialize() {

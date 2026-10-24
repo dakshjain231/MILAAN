@@ -30,6 +30,7 @@ import db
 import delivery
 import followups
 import gstr2b
+import inbound
 import invoice_import
 import report_workbook
 import security
@@ -517,6 +518,76 @@ def _delivery_row(row) -> dict:
         "next_attempt": row["next_attempt_at"],
         "opt_in": bool(row["opt_in_confirmed"]),
         "template": row["template_name"] or "",
+        # The provider's own message id (WhatsApp's wamid for a real send,
+        # a "mock-" digest for a simulation). Not a secret, and the only
+        # evidence that a real send was accepted.
+        "message_id": row["provider_message_id"] or "",
+    }
+
+
+def _inbound() -> dict:
+    """Inbound WhatsApp documents, display-safe.
+
+    The stored file path is deliberately omitted: it is an on-disk location
+    that the browser has no use for. The sender is already masked in the
+    database, so nothing here can leak a phone number.
+    """
+    try:
+        records = db.get_inbound_documents(limit=50)
+    except Exception:
+        records = []
+    documents = [
+        {
+            "id": record["id"],
+            "at": record["processed_at"],
+            "from": record["from_masked"],
+            "kind": record["kind"],
+            "type": record["document_kind"],
+            "file": record["file_name"],
+            "size": record["file_size"],
+            "hash": (record["file_hash"] or "")[:12] or None,
+            "status": record["status"],
+            "reason": record["reason"],
+            "detail": record["detail"],
+            "rows": record["imported_rows"],
+            "duplicates": record["duplicate_rows"],
+            "rejected": record["rejected_rows"],
+            "batch": record["gstr2b_import_id"],
+            "run": record["reconciliation_run_id"],
+            "drafts": record["drafts_created"],
+            "text": record["message_text"],
+        }
+        for record in records
+    ]
+    try:
+        config = inbound.load_inbound_config().safe_summary()
+    except Exception:
+        config = {"enabled": False, "ready": False, "problems": ["configuration unreadable"]}
+    config.pop("storage_dir", None)
+    return {
+        "documents": documents,
+        "config": config,
+        "imported": sum(1 for item in documents if item["status"] == "imported"),
+        "unsupported": sum(
+            1 for item in documents
+            if item["status"] in ("unsupported", "rejected", "failed")
+        ),
+    }
+
+
+def _provider_summary() -> dict:
+    """Which delivery channels are configured. No network calls here."""
+    webjs_config = webjs.load_webjs_config()
+    return {
+        "cloud": delivery.load_whatsapp_config().ready,
+        "webjs": bool(webjs_config.ready),
+        # Live WhatsApp Web follow-up delivery needs its own switch on top of
+        # the bridge being configured. Reachability is checked per send.
+        "webjs_live": bool(webjs_config.ready and webjs_config.live_followups),
+        "webjs_allowed_recipients": [
+            webjs.mask_phone(value)
+            for value in webjs_config.allowlist_digits()
+        ],
     }
 
 
@@ -554,7 +625,7 @@ def _audit() -> list[dict]:
 
 
 def _summary(invoices: list[dict], gst: dict, recon: dict, drafts: list[dict],
-             deliveries: list[dict]) -> dict:
+             deliveries: list[dict], inbound_view: dict | None = None) -> dict:
     validation = {key: 0 for key in db.VALIDATION_STATUSES}
     for invoice in invoices:
         validation[invoice["validation"]] = validation.get(invoice["validation"], 0) + 1
@@ -582,6 +653,9 @@ def _summary(invoices: list[dict], gst: dict, recon: dict, drafts: list[dict],
             + (recon["latest"] or {}).get("amount_mismatch", 0)
             + (recon["latest"] or {}).get("review", 0)
         ),
+        "inbound_documents": len((inbound_view or {}).get("documents", [])),
+        "inbound_imported": (inbound_view or {}).get("imported", 0),
+        "inbound_unsupported": (inbound_view or {}).get("unsupported", 0),
     }
 
 
@@ -760,10 +834,13 @@ def create_app() -> Flask:
         drafts = _draft_rows()
         deliveries = _deliveries()
         agent = agent_views.overview()
+        inbound_view = _inbound()
         return jsonify(
             {
                 "now": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "summary": _summary(invoices, gst, recon, drafts, deliveries),
+                "summary": _summary(
+                    invoices, gst, recon, drafts, deliveries, inbound_view
+                ),
                 "invoices": invoices,
                 "suppliers": _suppliers(),
                 "gstr2b": gst,
@@ -772,11 +849,9 @@ def create_app() -> Flask:
                 "deliveries": deliveries,
                 "audit": _audit(),
                 "agent": agent,
+                "inbound": inbound_view,
                 "database": _database_metadata(),
-                "provider": {
-                    "cloud": delivery.load_whatsapp_config().ready,
-                    "webjs": bool(webjs.load_webjs_config().ready),
-                },
+                "provider": _provider_summary(),
             }
         )
 
@@ -885,6 +960,25 @@ def create_app() -> Flask:
             }
         )
 
+    @app.post("/api/whatsapp/inbound/poll")
+    def whatsapp_inbound_poll():
+        """Drain the bridge's inbound queue and import what arrived.
+
+        This is the automatic half of the workflow: the dashboard calls it on
+        its refresh cycle, so a file sent on WhatsApp shows up without anyone
+        uploading it by hand. It only ever reads from the bridge and writes to
+        MILAAN — it can never send a message.
+        """
+        try:
+            summary = inbound.poll_once()
+        except inbound.InboundBridgeError as exc:
+            return _error(str(exc), 503)
+        except Exception as exc:
+            return _error(
+                f"Inbound WhatsApp intake failed ({type(exc).__name__}).", 500
+            )
+        return jsonify(summary)
+
     @app.post("/api/invoices/preview")
     def invoice_preview():
         try:
@@ -934,7 +1028,8 @@ def create_app() -> Flask:
                 details={
                     "imported": result["imported"],
                     "duplicates": result["duplicates"],
-                    "rejected": result["rejected_rows"],
+                    # save_invoice_import() returns this as "rejected".
+                    "rejected": result["rejected"],
                     "suppliers_created": result["suppliers_created"],
                 },
             )
@@ -1192,6 +1287,15 @@ def create_app() -> Flask:
     def _provider_for(row: dict):
         if row["provider"] == delivery.PROVIDER_MOCK:
             return delivery.MockDeliveryProvider(max_attempts=row["max_attempts"])
+        if row["provider"] == delivery.PROVIDER_WHATSAPP_WEB:
+            # One attempt only: WhatsApp Web may already hold a message whose
+            # outcome came back unknown, so retrying could duplicate it.
+            # Resolve the record by hand instead.
+            raise delivery.DeliveryBlockedError(
+                "A WhatsApp Web delivery is never retried automatically: the "
+                "message may already have reached the recipient. Check the "
+                "chat and resolve this delivery instead. No message was sent."
+            )
         config = delivery.load_whatsapp_config()
         if not config.ready:
             raise delivery.DeliveryConfigurationError(
@@ -1199,16 +1303,99 @@ def create_app() -> Flask:
             )
         return delivery.WhatsAppCloudApiProvider(config)
 
+    @app.get("/api/followups/<int:draft_id>/send-preflight")
+    def followup_send_preflight(draft_id: int):
+        """Report, without sending, whether this draft can be sent live.
+
+        Contacts the local bridge to read its linked-session status, so the
+        Send button is only offered when a real send could actually run.
+        """
+        if db.get_followup_draft(draft_id) is None:
+            return _error("Follow-up draft not found.", 404)
+        config = webjs.load_webjs_config()
+        try:
+            preflight = webjs.live_send_preflight(config)
+        except Exception as exc:
+            return _error(
+                f"Could not check the WhatsApp Web bridge ({type(exc).__name__}).",
+                502,
+            )
+        eligibility = db.get_delivery_eligibility(draft_id)
+        recipient_allowed = config.is_allowed_recipient(
+            eligibility["approved_recipient_phone"]
+            or eligibility["current_contact_phone"]
+        )
+        existing = db.get_message_deliveries(draft_id=draft_id, limit=1)
+        return jsonify(
+            {
+                **preflight,
+                "draft_id": draft_id,
+                "recipient_allowed": recipient_allowed,
+                "recipient_masked": _mask_phone(
+                    eligibility["approved_recipient_phone"]
+                    or eligibility["current_contact_phone"]
+                ),
+                "draft_eligible": eligibility["eligible"],
+                "draft_problems": eligibility["problems"],
+                "existing_delivery": (
+                    _delivery_row(existing[0]) if existing else None
+                ),
+                "can_send": bool(
+                    preflight["available"]
+                    and recipient_allowed
+                    and eligibility["eligible"]
+                    and not existing
+                ),
+            }
+        )
+
     @app.post("/api/followups/<int:draft_id>/send")
     def send_followup(draft_id: int):
         payload = request.get_json(silent=True) or {}
         mode = str(payload.get("mode") or "").strip().lower()
-        if mode not in ("mock", "live"):
-            return _error("mode must be 'mock' or 'live'.")
+        if mode not in ("mock", "live", webjs.LIVE_MODE):
+            return _error(
+                f"mode must be 'mock', '{webjs.LIVE_MODE}' or 'live'."
+            )
         if payload.get("confirm_send") is not True:
             return _error("Explicit send confirmation is required. No message was sent.")
         if payload.get("opt_in_confirmed") is not True:
             return _error("Recipient opt-in must be confirmed. No message was sent.")
+        if mode == webjs.LIVE_MODE:
+            # Real delivery through the local whatsapp-web.js bridge. The
+            # allowlist, bridge connectivity and linked-session checks all
+            # live in webjs.send_followup_live; the recorded status and
+            # message id below are the provider's own answer.
+            try:
+                record = webjs.send_followup_live(
+                    draft_id,
+                    actor="ui",
+                    confirmed=True,
+                    opt_in_confirmed=True,
+                )
+            except (webjs.WebJsBlocked, webjs.WebJsConfigurationError) as exc:
+                return _error(str(exc), 409)
+            except (
+                delivery.DeliveryBlockedError,
+                delivery.DeliveryConfigurationError,
+            ) as exc:
+                return _error(str(exc), 409)
+            except KeyError:
+                return _error("Follow-up draft not found.", 404)
+            except Exception as exc:
+                return _error(
+                    "Live WhatsApp Web send failed "
+                    f"({type(exc).__name__}). Check the delivery log before "
+                    "retrying.",
+                    502,
+                )
+            return jsonify(
+                {
+                    "delivery": _delivery_row(record),
+                    "mode": mode,
+                    "simulated": False,
+                }
+            )
         try:
             if mode == "mock":
                 provider = delivery.MockDeliveryProvider()

@@ -329,6 +329,55 @@ not overwritten.
 | Workspace demo, browser | `node scripts/demo_e2e.js` (see DEMO.md) | 25 / 25 checks: import → reconcile → approve → simulated send → next-cycle 2B → Resolved; no console errors |
 | WhatsApp Web bridge live send (2026-10-24) | Settings → Send test message (to the configured, self-owned test number) | **Verified: delivered with a confirmed message id (live send, 2026-10-24 10:48 UTC).** With the fix, one test send returned `ACCEPTED` and a WhatsApp message id read back from the message store (the library itself again returned none). Before the fix: 4 attempts; the recipient confirmed all 4 arrived, but `whatsapp-web.js` 1.34.7 (latest stable) returned no message id, so each was recorded as `UNKNOWN` and never retried. Root cause, found read-only in the live session: current WhatsApp Web message keys have no `_serialized` property (they serialize via `toString()`), so the library's post-send lookup `Msg.get(key._serialized)` finds nothing. The bridge now reads the id back from WhatsApp Web's message store (`whatsapp_service/src/sendConfirm.js`). Verified without sending: run against the live session with `sendMessage` stubbed to return `undefined`, it returned the stored test message's real key, which resolves in the store; a later time window correctly matched nothing. WhatsApp Cloud API is not configured, so no supplier delivery was attempted |
 
+## Round 2 re-verification record (2026-10-24, inbound WhatsApp workflow)
+
+Re-run after adding inbound WhatsApp document intake. Every write-capable
+check used a throwaway database; `milaan.db` was backed up first
+(`backups/milaan-backup-20261024T115754159182Z.sqlite3`) and not written to by
+any test.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Python suite | `.venv/bin/python -m pytest -q` | **672 passed**, 145 subtests (564 before this work) |
+| Node suite | `cd whatsapp_service && npm test` | **75 passed** (33 before this work) |
+| Node syntax | `npm run check` | Clean, including the new `src/inbound.js` |
+| Browser end-to-end, bridge live | `node scripts/demo_e2e.js` | **25 / 25**, exit 0, no console errors |
+| Browser end-to-end, delivery off | same, with `MILAAN_WA_ENABLED=false MILAAN_WA_LIVE_FOLLOWUPS=false` | **25 / 25**, exit 0 |
+| Reconciliation policy eval | `python reconciliation_eval.py` | 22 / 22 scenarios, 10 / 10 file scenarios, 0 false matches, precision 1.00, recall 1.00 — unchanged |
+| Matching benchmark vs B2 exact-key baseline | `python benchmark.py` | MILAAN precision 1.00 / recall 1.00; baseline precision 0.50 / recall 1.00 — unchanged |
+| Diagnosis eval (B0 / B2 / MILAAN), seed 7 | `python -m agent.eval.diagnosis_eval --seed 7` | Byte-identical to the committed `agent_data/eval/diagnosis_results.json` |
+| Inbound intake | `pytest test_inbound.py test_inbound_web.py` | 80 passed: classification, secure storage, duplicate detection, period-matched reconciliation, draft preparation, bridge polling |
+| Pilot send restriction | `pytest test_pilot_safety.py` | 15 passed across all three layers (Python provider, Node bridge, approval gate) + Cloud API off |
+
+### Three required baselines
+
+| Baseline | Status |
+| --- | --- |
+| **B0 — status quo** (no tooling) | Measured. In the seed-7 diagnosis eval it identifies 0.0% of at-risk GST and sends 0 messages |
+| **B2 — exact-string matching** | Measured. Matching benchmark: precision 0.50 / recall 1.00 (3 false positives on 3 true positives). Diagnosis eval: 143 messages to innocent suppliers, 25 misdirected, 100% of at-risk GST flagged but with those false accusations |
+| **B1 — single-shot model** | **Not re-run: blocked.** `agent/eval/b1_single_shot.py` is implemented and runnable, but needs an LLM API key. `LLM_API_KEY` and `GEMINI_API_KEY` are both unset on this machine, so the only result remains the 1-run file from 2026-10-22. To complete it: set `LLM_API_KEY` (any OpenAI-compatible endpoint) and run `python -m agent.eval.b1_single_shot --runs 3` |
+
+MILAAN's own figures in the same seed-7 run: 0 messages to innocent
+suppliers, 0 misdirected, 0 premature chases, 100% of at-risk GST identified,
+and per-cause action accuracy of 1.00 on every cause except `qrmp_thin`
+(0.00, a known hard case outside the rules).
+
+### Inbound WhatsApp workflow: what is and is not extracted
+
+Measured by `test_inbound.py` on synthetic files, not by a labelled corpus.
+
+| Input sent to the linked account | Handling |
+| --- | --- |
+| CSV / XLSX purchase register | Parsed by `invoice_import`, persisted, duplicates skipped |
+| JSON / CSV / XLSX GSTR-2B export | Parsed by `gstr2b` (incl. portal formats), persisted as a batch |
+| File mixing both schemas | Refused as `AMBIGUOUS_SCHEMA` rather than routed to one of them |
+| PDF | Refused, `UNSUPPORTED_PDF`. **Blocker:** no PDF text-extraction or OCR service is configured |
+| Photo of an invoice | Refused, `UNSUPPORTED_IMAGE`. **Blocker:** `LLM_API_KEY` unset, so no vision model is reachable. The agent subsystem's image extraction (`agent/extract.py`, 49 synthetic bills) is a separate Twilio/Meta pipeline and is also unmeasured without a key |
+| Voice note (Hindi or English) | Refused, `UNSUPPORTED_AUDIO`. **Blocker:** `GEMINI_API_KEY` unset, so no speech-to-text is reachable. No transcription code exists for this bridge |
+
+No accuracy figure is claimed for photos, PDFs or voice notes, because
+nothing extracts them. The refusals themselves are tested.
+
 **Gap against the Round 1 evaluation plan.** The plan described about 150 bill
 photographs labelled independently by both authors with agreement reported,
 and a mismatch-detection precision/recall on paired bill-set and 2B cases.

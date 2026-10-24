@@ -6,9 +6,12 @@ const { createServer } = require('../src/server');
 const { ConnectionState } = require('../src/state');
 
 const TOKEN = 'test-service-token-1234';
+// Every recipient these tests send to must be allowlisted: /send refuses
+// anything else, which the allowlist tests below cover explicitly.
+const ALLOWED = ['9999999999', '919999999999', '919812345678'];
 
-function makeConfig() {
-  return { token: TOKEN };
+function makeConfig(overrides = {}) {
+  return { token: TOKEN, allowedRecipients: ALLOWED, ...overrides };
 }
 
 async function start(t, options = {}) {
@@ -19,7 +22,12 @@ async function start(t, options = {}) {
     },
   };
   const logger = options.logger || (() => {});
-  const server = createServer({ config: makeConfig(), state, adapter, logger });
+  const server = createServer({
+    config: makeConfig(options.config),
+    state,
+    adapter,
+    logger,
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const { port } = server.address();
@@ -167,6 +175,57 @@ test('send failures are logged with numbers masked and no message text', async (
   assert.equal(lines[0].includes('919812345678'), false);
   assert.equal(lines[0].includes('Private invoice text'), false);
   assert.equal(lines[0].includes(TOKEN), false);
+});
+
+test('send refuses a recipient that is not allowlisted', async (t) => {
+  const state = new ConnectionState();
+  state.set('ready', { phone: '919999999999' });
+  let called = false;
+  const { base } = await start(t, {
+    state,
+    adapter: { async sendText() { called = true; return { messageId: 'x' }; } },
+  });
+  const response = await fetch(`${base}/send`, {
+    method: 'POST',
+    headers: authHeaders(),
+    // A plausible supplier number that is not on the allowlist.
+    body: JSON.stringify({ to: '918111222333', message: 'Hello' }),
+  });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, 'recipient_not_allowed');
+  assert.equal(called, false);
+});
+
+test('an empty allowlist blocks every send', async (t) => {
+  const state = new ConnectionState();
+  state.set('ready', { phone: '919999999999' });
+  let called = false;
+  const { base } = await start(t, {
+    state,
+    config: { allowedRecipients: [] },
+    adapter: { async sendText() { called = true; return { messageId: 'x' }; } },
+  });
+  const response = await fetch(`${base}/send`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ to: '9999999999', message: 'Hello' }),
+  });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, 'recipient_not_allowed');
+  assert.equal(called, false);
+});
+
+test('the allowlist is checked before the ready state', async (t) => {
+  // Not linked and not allowlisted: the recipient check must win, so a
+  // blocked number never looks like a transient "not ready" failure.
+  const { base } = await start(t);
+  const response = await fetch(`${base}/send`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ to: '918111222333', message: 'Hello' }),
+  });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, 'recipient_not_allowed');
 });
 
 test('unknown routes return 404', async (t) => {
