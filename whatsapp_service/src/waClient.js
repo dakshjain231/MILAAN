@@ -1,6 +1,8 @@
 'use strict';
 
 const QRCode = require('qrcode');
+const { sendAndConfirm } = require('./sendConfirm');
+const { maskForLog } = require('./server');
 
 function createWhatsAppClient({ config, state }) {
   // Loaded lazily so the HTTP layer and its tests never require Chromium.
@@ -51,16 +53,13 @@ function createWhatsAppClient({ config, state }) {
         throw error;
       }
       const chatId = `${phoneDigits}@c.us`;
-      const sent = await client.sendMessage(chatId, message);
-      const messageId = sent && sent.id
-        ? (sent.id._serialized || sent.id.id || null)
-        : null;
-      if (!messageId) {
-        const error = new Error('provider did not return a message id');
-        error.code = 'MISSING_MESSAGE_ID';
-        throw error;
-      }
-      return { messageId: String(messageId).slice(0, 200) };
+      const { messageId, confirmedBy } = await sendAndConfirm(client, chatId, message, {
+        onLookupError: (error) => console.error(
+          `MILAAN WhatsApp send: message-store lookup failed: ${maskForLog(error && error.name)}: `
+            + maskForLog(error && error.message)
+        ),
+      });
+      return { messageId: String(messageId).slice(0, 200), confirmedBy };
     },
     async destroy() {
       try {

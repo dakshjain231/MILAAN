@@ -110,9 +110,13 @@ function createServer({ config, state, adapter, logger = console.error }) {
         if (!result || typeof result.messageId !== 'string' || !result.messageId) {
           return sendJson(res, 502, { ok: false, error: 'missing_message_id' });
         }
+        if (result.confirmedBy === 'message_store') {
+          logger('MILAAN WhatsApp send: message id read from the WhatsApp Web message store (client returned none)');
+        }
         return sendJson(res, 200, {
           ok: true,
           messageId: result.messageId.slice(0, 200),
+          confirmedBy: result.confirmedBy || 'send_result',
         });
       } catch (error) {
         if (error && error.code === 'NOT_READY') {

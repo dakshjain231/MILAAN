@@ -133,3 +133,9 @@ npm run check   # node --check on every source file
 - QR never appears: restart the service and check the terminal; delete
   `.wwebjs_auth/` if a stale session is stuck.
 - `401 unauthorized` from MILAAN: the Python app and service tokens differ.
+- Message sent but no message id: `whatsapp-web.js` 1.34.7 looks the sent
+  message up by `key._serialized`, which current WhatsApp Web keys no longer
+  have. `src/sendConfirm.js` then reads the id back from WhatsApp Web's
+  message store (newest outgoing message with the same text since the send
+  began) and the log says so. If it still cannot find one, MILAAN records the
+  outcome as unknown and never retries automatically.
